@@ -13,8 +13,6 @@ import org.springframework.test.context.junit4.SpringRunner;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.*;
-
 /**
  * @author fazazulfikapp
  * @version 1.0.0
@@ -34,8 +32,6 @@ public class ExtractMethodImplTest {
                 .statements(createExpectedStatements())
                 .build();
 
-        // TODO create mock long method
-
         extractMethod.refactoring(methodModel);
     }
 
@@ -44,65 +40,161 @@ public class ExtractMethodImplTest {
 
         statements.add(createFirstStatement());
         statements.add(createSecondStatement());
+        statements.add(createThirdStatement());
 
         return statements;
     }
 
     private StatementModel createFirstStatement() {
-        BlockModel blockModel = BlockModel.blockBuilder()
-                .build();
-        blockModel.setStatement("try {");
-        blockModel.setStartIndex(9);
-        blockModel.setEndIndex(13);
-        blockModel.getStatements()
-                .add(createFirstBlockStatement());
-        blockModel.setEndOfBlockStatement(createFirstBlockEndStatement());
-
-        return blockModel;
-    }
-
-    private StatementModel createFirstBlockStatement() {
         return StatementModel.statementBuilder()
-                .statement("return user + \"-\" + name + extension;")
-                .startIndex(27)
-                .endIndex(63)
-                .build();
-    }
-
-    private StatementModel createFirstBlockEndStatement() {
-        return StatementModel.statementBuilder()
-                .statement("}")
-                .startIndex(73)
-                .endIndex(73)
+                .statement("Rectangle2D r = super . getFigDrawBounds ();")
+                .startIndex(8)
+                .endIndex(51)
                 .build();
     }
 
     private StatementModel createSecondStatement() {
         BlockModel blockModel = BlockModel.blockBuilder()
+                .statements(createSecondBlockStatements())
+                .endOfBlockStatement(createSecondBlockEndStatement())
                 .build();
-        blockModel.setStatement("catch (NullPointerException e) {");
-        blockModel.setStartIndex(75);
-        blockModel.setEndIndex(106);
-        blockModel.getStatements()
-                .add(createSecondBlockStatement());
-        blockModel.setEndOfBlockStatement(createSecondBlockEndStatement());
+        blockModel.setStatement("if ( getNodeCount () > 1) {");
+        blockModel.setStartIndex(64);
+        blockModel.setEndIndex(90);
 
         return blockModel;
     }
 
-    private StatementModel createSecondBlockStatement() {
+    private List<StatementModel> createSecondBlockStatements() {
+        List<StatementModel> statements = new ArrayList<>();
+
+        statements.add(createSecondBlockFirstStatement());
+        statements.add(createSecondBlockSecondStatement());
+
+        return statements;
+    }
+
+    private StatementModel createSecondBlockFirstStatement() {
+        BlockModel blockModel = BlockModel.blockBuilder()
+                .statements(createThirdBlockStatements())
+                .endOfBlockStatement(createThirdBlockEndStatement())
+                .build();
+        blockModel.setStatement("if ( START .get( this ) != null ) {");
+        blockModel.setStartIndex(107);
+        blockModel.setEndIndex(141);
+
+        return blockModel;
+    }
+
+    private List<StatementModel> createThirdBlockStatements() {
+        List<StatementModel> statements = new ArrayList<>();
+
+        statements.add(createThirdBlockFirstStatement());
+        statements.add(createThirdBlockSecondStatement());
+        statements.add(createThirdBlockThirdStatement());
+
+        return statements;
+    }
+
+    private StatementModel createThirdBlockFirstStatement() {
         return StatementModel.statementBuilder()
-                .statement("return null;")
-                .startIndex(120)
-                .endIndex(131)
+                .statement("Point p1 = getPoint (0, 0);")
+                .startIndex(162)
+                .endIndex(188)
+                .build();
+    }
+
+    private StatementModel createThirdBlockSecondStatement() {
+        return StatementModel.statementBuilder()
+                .statement("Point p2 = getPoint (1, 0);")
+                .startIndex(209)
+                .endIndex(235)
+                .build();
+    }
+
+    private StatementModel createThirdBlockThirdStatement() {
+        return StatementModel.statementBuilder()
+                .statement("r.add ( START .get ( this ). getBounds (p1 , p2 ));")
+                .startIndex(256)
+                .endIndex(306)
+                .build();
+    }
+
+    private StatementModel createThirdBlockEndStatement() {
+        return StatementModel.statementBuilder()
+                .statement("}")
+                .startIndex(323)
+                .endIndex(323)
+                .build();
+    }
+
+    private StatementModel createSecondBlockSecondStatement() {
+        BlockModel blockModel = BlockModel.blockBuilder()
+                .statements(createFourthBlockStatements())
+                .endOfBlockStatement(createFourthBlockEndStatement())
+                .build();
+        blockModel.setStatement("if ( END .get ( this ) != null ) {");
+        blockModel.setStartIndex(341);
+        blockModel.setEndIndex(374);
+
+        return blockModel;
+    }
+
+    private List<StatementModel> createFourthBlockStatements() {
+        List<StatementModel> statements = new ArrayList<>();
+
+        statements.add(createFourthBlockFirstStatement());
+        statements.add(createFourthBlockSecondStatement());
+        statements.add(createFourthBlockThirdStatement());
+
+        return statements;
+    }
+
+    private StatementModel createFourthBlockFirstStatement() {
+        return StatementModel.statementBuilder()
+                .statement("Point p1= getPoint ( getNodeCount ()-1 , 0);")
+                .startIndex(395)
+                .endIndex(438)
+                .build();
+    }
+
+    private StatementModel createFourthBlockSecondStatement() {
+        return StatementModel.statementBuilder()
+                .statement("Point p2= getPoint ( getNodeCount ()-2 , 0);")
+                .startIndex(459)
+                .endIndex(502)
+                .build();
+    }
+
+    private StatementModel createFourthBlockThirdStatement() {
+        return StatementModel.statementBuilder()
+                .statement("r.add (END. get ( this ). getBounds (p1 , p2 ));")
+                .startIndex(523)
+                .endIndex(570)
+                .build();
+    }
+
+    private StatementModel createFourthBlockEndStatement() {
+        return StatementModel.statementBuilder()
+                .statement("}")
+                .startIndex(587)
+                .endIndex(587)
                 .build();
     }
 
     private StatementModel createSecondBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
-                .startIndex(141)
-                .endIndex(141)
+                .startIndex(600)
+                .endIndex(600)
+                .build();
+    }
+
+    private StatementModel createThirdStatement() {
+        return StatementModel.statementBuilder()
+                .statement("return r;")
+                .startIndex(614)
+                .endIndex(622)
                 .build();
     }
 }

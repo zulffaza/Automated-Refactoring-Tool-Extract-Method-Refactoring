@@ -19,4 +19,16 @@ public class Candidate {
 
     @Builder.Default
     private List<StatementModel> statements = new ArrayList<>();
+
+    private Double lengthScore;
+
+    private Double nestingDepthScore;
+
+    private Double nestingAreaScore;
+
+    private Double parameterScore;
+
+    private Double commentsBlankLinesScore;
+
+    private Double totalScore;
 }
