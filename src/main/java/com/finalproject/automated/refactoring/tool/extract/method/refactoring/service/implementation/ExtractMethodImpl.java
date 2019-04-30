@@ -25,9 +25,19 @@ public class ExtractMethodImpl implements ExtractMethod {
     @Value("${threshold.min.candidate.statements}")
     private Integer minCandidateStatements;
 
+    @Value("${statement.length.score.constant}")
+    private Double statementLengthScoreConstant;
+
+    @Value("${statement.length.score.max}")
+    private Double statementLengthScoreMax;
+
+    @Value("${nesting.area.score.constant}")
+    private Double nestingAreaScoreConstant;
+
     @Override
     public void refactoring(@NonNull MethodModel methodModel) {
         List<Candidate> candidates = getCandidates(methodModel);
+        scoringCandidates(methodModel, candidates);
 
         System.out.println(candidates.size());
         candidates.forEach(System.out::println);
@@ -110,15 +120,20 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private Boolean isQualityValid(BlockModel methodBlock, List<StatementModel> candidate) {
         BlockModel candidateBlock = getMethodBlockStatement(candidate);
-        BlockModel remainingBlock = createCopyBlockMethod(methodBlock);
-
-        removeCandidates(remainingBlock, candidate);
+        BlockModel remainingBlock = getRemainingBlockModel(methodBlock, candidateBlock);
 
         Integer candidateStatementCount = getStatementCount(candidateBlock);
         Integer remainingStatementCount = getStatementCount(remainingBlock);
 
         return (candidateStatementCount >= minCandidateStatements) &&
                 (remainingStatementCount >= minCandidateStatements);
+    }
+
+    private BlockModel getRemainingBlockModel(BlockModel methodBlock, BlockModel candidateBlock) {
+        BlockModel remainingBlock = createCopyBlockMethod(methodBlock);
+        removeCandidates(remainingBlock, candidateBlock.getStatements());
+
+        return remainingBlock;
     }
 
     private BlockModel createCopyBlockMethod(BlockModel blockMethod) {
@@ -134,32 +149,32 @@ public class ExtractMethodImpl implements ExtractMethod {
         return copyBlockMethod;
     }
 
-    private void copyListStatements(BlockModel blockModel) {
-        int size = blockModel.getStatements().size();
+    private void copyListStatements(BlockModel blockMethod) {
+        int size = blockMethod.getStatements().size();
 
         for (int i = 0; i < size; i++) {
-            replaceBlockMethod(blockModel, i);
+            replaceBlockMethod(blockMethod, i);
         }
     }
 
-    private void replaceBlockMethod(BlockModel blockModel, Integer index) {
-        StatementModel statement = blockModel.getStatements().get(index);
+    private void replaceBlockMethod(BlockModel blockMethod, Integer index) {
+        StatementModel statement = blockMethod.getStatements().get(index);
 
         if (statement instanceof BlockModel) {
-            blockModel.getStatements()
+            blockMethod.getStatements()
                     .set(index, createCopyBlockMethod(((BlockModel) statement)));
         }
     }
 
-    private Integer getStatementCount(BlockModel methodBlock) {
+    private Integer getStatementCount(BlockModel blockMethod) {
         AtomicInteger count = new AtomicInteger();
-        countBlockStatement(methodBlock, count);
+        countBlockStatement(blockMethod, count);
 
         return count.get();
     }
 
-    private void countBlockStatement(BlockModel block, AtomicInteger count) {
-        block.getStatements()
+    private void countBlockStatement(BlockModel blockMethod, AtomicInteger count) {
+        blockMethod.getStatements()
                 .forEach(statement -> countStatement(statement, count));
     }
 
@@ -179,8 +194,8 @@ public class ExtractMethodImpl implements ExtractMethod {
         candidates.add(newCandidate);
     }
 
-    private void removeCandidates(BlockModel block, List<StatementModel> candidates) {
-        List<StatementModel> statements = block.getStatements();
+    private void removeCandidates(BlockModel blockMethod, List<StatementModel> candidates) {
+        List<StatementModel> statements = blockMethod.getStatements();
 
         if (statements.containsAll(candidates)) {
             statements.removeAll(candidates);
@@ -193,5 +208,120 @@ public class ExtractMethodImpl implements ExtractMethod {
         if (statement instanceof BlockModel) {
             removeCandidates((BlockModel) statement, candidates);
         }
+    }
+
+    private void scoringCandidates(MethodModel methodModel, List<Candidate> candidates) {
+        BlockModel methodBlock = getMethodBlockStatement(methodModel.getStatements());
+
+        candidates.forEach(
+                candidate -> scoringCandidate(methodBlock, candidate));
+    }
+
+    private void scoringCandidate(BlockModel methodBlock, Candidate candidate) {
+        BlockModel candidateBlock = getMethodBlockStatement(candidate.getStatements());
+        BlockModel remainingBlock = getRemainingBlockModel(methodBlock, candidateBlock);
+
+        candidate.setLengthScore(calculateStatementLengthScore(candidateBlock, remainingBlock));
+        candidate.setNestingDepthScore(calculateNestingDepthScore(methodBlock, candidateBlock, remainingBlock));
+        candidate.setNestingAreaScore(calculateNestingAreaScore(methodBlock, candidateBlock, remainingBlock));
+        candidate.setParameterScore(calculateParameterScore(methodBlock, candidateBlock, remainingBlock));
+    }
+
+    private Double calculateStatementLengthScore(BlockModel candidateBlock, BlockModel remainingBlock) {
+        Integer candidateStatementCount = getStatementCount(candidateBlock);
+        Integer remainingStatementCount = getStatementCount(remainingBlock);
+        Integer minStatementCount = Math.min(candidateStatementCount, remainingStatementCount);
+
+        return Math.min(statementLengthScoreConstant * minStatementCount, statementLengthScoreMax);
+    }
+
+    private Double calculateNestingDepthScore(BlockModel methodBlock, BlockModel candidateBlock,
+                                              BlockModel remainingBlock) {
+        Integer methodMaxNestingDepth = getNestingDepth(methodBlock);
+        Integer candidateMaxNestingDepth = getNestingDepth(candidateBlock);
+        Integer remainingMaxNestingDepth = getNestingDepth(remainingBlock);
+
+        int remainingMaxNestingDepthDeviation = methodMaxNestingDepth - remainingMaxNestingDepth;
+        int candidateMaxNestingDepthDeviation = methodMaxNestingDepth - candidateMaxNestingDepth;
+
+        return Double.min(remainingMaxNestingDepthDeviation, candidateMaxNestingDepthDeviation);
+    }
+
+    private Integer getNestingDepth(BlockModel blockMethod) {
+        AtomicInteger count = new AtomicInteger();
+        AtomicInteger max = new AtomicInteger();
+
+        searchMaxNestingDepth(blockMethod, count, max);
+
+        return max.decrementAndGet();
+    }
+
+    private void searchMaxNestingDepth(BlockModel blockMethod, AtomicInteger count,
+                                       AtomicInteger max) {
+        count.getAndIncrement();
+
+        blockMethod.getStatements()
+                .forEach(statement -> countNestingDepth(statement, count, max));
+
+        saveMaxNestingDepth(count, max);
+    }
+
+    private void countNestingDepth(StatementModel statement, AtomicInteger count,
+                                   AtomicInteger max) {
+        if (statement instanceof BlockModel) {
+            searchMaxNestingDepth((BlockModel) statement, count, max);
+        }
+    }
+
+    private void saveMaxNestingDepth(AtomicInteger count, AtomicInteger max) {
+        int newMax = count.getAndDecrement();
+
+        if (newMax > max.get()) {
+            max.set(newMax);
+        }
+    }
+
+    private Double calculateNestingAreaScore(BlockModel methodBlock, BlockModel candidateBlock,
+                                             BlockModel remainingBlock) {
+        Integer methodMaxNestingDepth = getNestingDepth(methodBlock);
+
+        Integer methodNestingArea = getNestingArea(methodBlock);
+        Integer candidateNestingArea = getNestingArea(candidateBlock);
+        Integer remainingNestingArea = getNestingArea(remainingBlock);
+
+        int remainingNestingAreaDeviation = methodNestingArea - remainingNestingArea;
+        int candidateNestingAreaDeviation = methodNestingArea - candidateNestingArea;
+
+        Double nestingAreaReduction = Double.min(remainingNestingAreaDeviation, candidateNestingAreaDeviation);
+
+        return nestingAreaScoreConstant * methodMaxNestingDepth * (nestingAreaReduction / methodNestingArea);
+    }
+
+    private Integer getNestingArea(BlockModel blockMethod) {
+        AtomicInteger count = new AtomicInteger();
+        searchNestingArea(blockMethod, count);
+
+        return count.get();
+    }
+
+    private void searchNestingArea(BlockModel blockMethod, AtomicInteger count) {
+        blockMethod.getStatements()
+                .forEach(statement -> countNestingArea(statement, count));
+    }
+
+    private void countNestingArea(StatementModel statement, AtomicInteger count) {
+        AtomicInteger countNestingDepth = new AtomicInteger();
+        AtomicInteger maxNestingDepth = new AtomicInteger();
+
+        if (statement instanceof BlockModel) {
+            searchMaxNestingDepth((BlockModel) statement, countNestingDepth, maxNestingDepth);
+        }
+
+        count.set(count.get() + maxNestingDepth.get());
+    }
+
+    private Double calculateParameterScore(BlockModel methodBlock, BlockModel candidateBlock,
+                                           BlockModel remainingBlock) {
+        return 0D;
     }
 }
