@@ -1,5 +1,6 @@
 package com.finalproject.automated.refactoring.tool.extract.method.refactoring.model;
 
+import com.finalproject.automated.refactoring.tool.model.PropertyModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import lombok.Builder;
 import lombok.Data;
@@ -20,6 +21,12 @@ public class Candidate {
     @Builder.Default
     private List<StatementModel> statements = new ArrayList<>();
 
+    @Builder.Default
+    private List<PropertyModel> localVariables = new ArrayList<>();
+
+    @Builder.Default
+    private List<PropertyModel> parameters = new ArrayList<>();
+
     private Double lengthScore;
 
     private Double nestingDepthScore;
@@ -27,8 +34,6 @@ public class Candidate {
     private Double nestingAreaScore;
 
     private Double parameterScore;
-
-    private Double commentsBlankLinesScore;
 
     private Double totalScore;
 }

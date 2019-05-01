@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,13 +35,19 @@ public class ExtractMethodImpl implements ExtractMethod {
     @Value("${nesting.area.score.constant}")
     private Double nestingAreaScoreConstant;
 
+    @Value("${parameter.score.max}")
+    private Double parameterScoreMax;
+
     @Override
     public void refactoring(@NonNull MethodModel methodModel) {
         List<Candidate> candidates = getCandidates(methodModel);
         scoringCandidates(methodModel, candidates);
+        sortingCandidates(candidates);
 
-        System.out.println(candidates.size());
         candidates.forEach(System.out::println);
+        System.out.println();
+        System.out.println("Best candidate --> " + candidates.get(0));
+        System.out.println("Best score --> " + candidates.get(0).getTotalScore());
     }
 
     private List<Candidate> getCandidates(MethodModel methodModel) {
@@ -225,6 +232,8 @@ public class ExtractMethodImpl implements ExtractMethod {
         candidate.setNestingDepthScore(calculateNestingDepthScore(methodBlock, candidateBlock, remainingBlock));
         candidate.setNestingAreaScore(calculateNestingAreaScore(methodBlock, candidateBlock, remainingBlock));
         candidate.setParameterScore(calculateParameterScore(methodBlock, candidateBlock, remainingBlock));
+
+        calculateTotalScore(candidate);
     }
 
     private Double calculateStatementLengthScore(BlockModel candidateBlock, BlockModel remainingBlock) {
@@ -289,10 +298,10 @@ public class ExtractMethodImpl implements ExtractMethod {
         Integer candidateNestingArea = getNestingArea(candidateBlock);
         Integer remainingNestingArea = getNestingArea(remainingBlock);
 
-        int remainingNestingAreaDeviation = methodNestingArea - remainingNestingArea;
         int candidateNestingAreaDeviation = methodNestingArea - candidateNestingArea;
+        int remainingNestingAreaDeviation = methodNestingArea - remainingNestingArea;
 
-        Double nestingAreaReduction = Double.min(remainingNestingAreaDeviation, candidateNestingAreaDeviation);
+        Double nestingAreaReduction = Double.min(candidateNestingAreaDeviation, remainingNestingAreaDeviation);
 
         return nestingAreaScoreConstant * methodMaxNestingDepth * (nestingAreaReduction / methodNestingArea);
     }
@@ -322,6 +331,18 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private Double calculateParameterScore(BlockModel methodBlock, BlockModel candidateBlock,
                                            BlockModel remainingBlock) {
-        return 0D;
+        Integer parameterIn = 0;
+        Integer parameterOut = 0;
+
+        return parameterScoreMax - parameterIn - parameterOut;
+    }
+
+    private void calculateTotalScore(Candidate candidate) {
+        candidate.setTotalScore(candidate.getLengthScore() + candidate.getNestingDepthScore() +
+                candidate.getNestingAreaScore() + candidate.getParameterScore());
+    }
+
+    private void sortingCandidates(List<Candidate> candidates) {
+        candidates.sort(Comparator.comparing(Candidate::getTotalScore).reversed());
     }
 }
