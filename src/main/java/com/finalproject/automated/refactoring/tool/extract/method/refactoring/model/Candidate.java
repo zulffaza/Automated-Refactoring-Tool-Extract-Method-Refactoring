@@ -25,7 +25,17 @@ public class Candidate {
     private List<PropertyModel> localVariables = new ArrayList<>();
 
     @Builder.Default
+    private List<String> globalVariables = new ArrayList<>();
+
+    @Builder.Default
     private List<PropertyModel> parameters = new ArrayList<>();
+
+    @Builder.Default
+    private List<List<String>> rawVariables = new ArrayList<>();
+
+    private PropertyModel returnType;
+
+    private String returnTypeStatement;
 
     private Double lengthScore;
 

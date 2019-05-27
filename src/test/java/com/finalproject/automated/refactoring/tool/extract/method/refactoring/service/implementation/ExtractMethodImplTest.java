@@ -47,9 +47,9 @@ public class ExtractMethodImplTest {
 
     private StatementModel createFirstStatement() {
         return StatementModel.statementBuilder()
-                .statement("Rectangle2D r = super . getFigDrawBounds ();")
+                .statement("Rectangle2D r = super.getFigDrawBounds();")
                 .startIndex(8)
-                .endIndex(51)
+                .endIndex(48) // -3
                 .build();
     }
 
@@ -58,9 +58,9 @@ public class ExtractMethodImplTest {
                 .statements(createSecondBlockStatements())
                 .endOfBlockStatement(createSecondBlockEndStatement())
                 .build();
-        blockModel.setStatement("if ( getNodeCount () > 1) {");
-        blockModel.setStartIndex(64);
-        blockModel.setEndIndex(90);
+        blockModel.setStatement("if (getNodeCount() > 1) {");
+        blockModel.setStartIndex(61); // -3
+        blockModel.setEndIndex(85); // -5
 
         return blockModel;
     }
@@ -79,9 +79,9 @@ public class ExtractMethodImplTest {
                 .statements(createThirdBlockStatements())
                 .endOfBlockStatement(createThirdBlockEndStatement())
                 .build();
-        blockModel.setStatement("if ( START .get( this ) != null ) {");
-        blockModel.setStartIndex(107);
-        blockModel.setEndIndex(141);
+        blockModel.setStatement("if (START.get(this) != null) {");
+        blockModel.setStartIndex(102); // -5
+        blockModel.setEndIndex(131); // -10
 
         return blockModel;
     }
@@ -98,33 +98,33 @@ public class ExtractMethodImplTest {
 
     private StatementModel createThirdBlockFirstStatement() {
         return StatementModel.statementBuilder()
-                .statement("Point p1 = getPoint (0, 0);")
-                .startIndex(162)
-                .endIndex(188)
+                .statement("Point p1 = getPoint(0, 0);")
+                .startIndex(152) // -10
+                .endIndex(177) // -11
                 .build();
     }
 
     private StatementModel createThirdBlockSecondStatement() {
         return StatementModel.statementBuilder()
-                .statement("Point p2 = getPoint (1, 0);")
-                .startIndex(209)
-                .endIndex(235)
+                .statement("Point p2 = getPoint(1, 0);")
+                .startIndex(198) // -11
+                .endIndex(223) // -12
                 .build();
     }
 
     private StatementModel createThirdBlockThirdStatement() {
         return StatementModel.statementBuilder()
-                .statement("r.add ( START .get ( this ). getBounds (p1 , p2 ));")
-                .startIndex(256)
-                .endIndex(306)
+                .statement("r.add(START.get(this).getBounds(p1, p2));")
+                .startIndex(256) // -12
+                .endIndex(284) // -22
                 .build();
     }
 
     private StatementModel createThirdBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
-                .startIndex(323)
-                .endIndex(323)
+                .startIndex(301) // -22
+                .endIndex(301) // -22
                 .build();
     }
 
@@ -133,9 +133,9 @@ public class ExtractMethodImplTest {
                 .statements(createFourthBlockStatements())
                 .endOfBlockStatement(createFourthBlockEndStatement())
                 .build();
-        blockModel.setStatement("if ( END .get ( this ) != null ) {");
-        blockModel.setStartIndex(341);
-        blockModel.setEndIndex(374);
+        blockModel.setStatement("if (END.get(this) != null) {");
+        blockModel.setStartIndex(319); // -22
+        blockModel.setEndIndex(346); // -28
 
         return blockModel;
     }
@@ -152,49 +152,49 @@ public class ExtractMethodImplTest {
 
     private StatementModel createFourthBlockFirstStatement() {
         return StatementModel.statementBuilder()
-                .statement("Point p1= getPoint ( getNodeCount ()-1 , 0);")
-                .startIndex(395)
-                .endIndex(438)
+                .statement("Point p1 = getPoint(getNodeCount() - 1, 0);")
+                .startIndex(367) // -28
+                .endIndex(409) // -29
                 .build();
     }
 
     private StatementModel createFourthBlockSecondStatement() {
         return StatementModel.statementBuilder()
-                .statement("Point p2= getPoint ( getNodeCount ()-2 , 0);")
-                .startIndex(459)
-                .endIndex(502)
+                .statement("Point p2 = getPoint(getNodeCount() - 2, 0);")
+                .startIndex(430) // -29
+                .endIndex(472) // -30
                 .build();
     }
 
     private StatementModel createFourthBlockThirdStatement() {
         return StatementModel.statementBuilder()
-                .statement("r.add (END. get ( this ). getBounds (p1 , p2 ));")
-                .startIndex(523)
-                .endIndex(570)
+                .statement("r.add(END.get(this).getBounds(p1, p2));")
+                .startIndex(493) // -30
+                .endIndex(531) // -39
                 .build();
     }
 
     private StatementModel createFourthBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
-                .startIndex(587)
-                .endIndex(587)
+                .startIndex(548) // -39
+                .endIndex(548) // -39
                 .build();
     }
 
     private StatementModel createSecondBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
-                .startIndex(600)
-                .endIndex(600)
+                .startIndex(561) // -39
+                .endIndex(561) // -39
                 .build();
     }
 
     private StatementModel createThirdStatement() {
         return StatementModel.statementBuilder()
                 .statement("return r;")
-                .startIndex(614)
-                .endIndex(622)
+                .startIndex(575) // -39
+                .endIndex(583) // -39
                 .build();
     }
 }
