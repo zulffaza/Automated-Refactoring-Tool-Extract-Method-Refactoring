@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -260,12 +261,14 @@ public class ExtractMethodImpl implements ExtractMethod {
     }
 
     private Boolean isBehaviourPreservationValid(MethodModel methodModel, Candidate candidate) {
-        List<List<String>> collect = candidate.getRawVariables()
+        List<List<String>> rawVariablesContainsAssigment = candidate.getRawVariables()
                 .stream()
                 .filter(rawVariables -> isContainsAssignment(methodModel, candidate, rawVariables))
                 .collect(Collectors.toList());
 
-        return collect.size() <= SINGLE_LIST_SIZE;
+        saveReturnTypeIndexStatement(candidate, rawVariablesContainsAssigment);
+
+        return rawVariablesContainsAssigment.size() <= SINGLE_LIST_SIZE;
     }
 
     private Boolean isContainsAssignment(MethodModel methodModel, Candidate candidate,
@@ -369,6 +372,18 @@ public class ExtractMethodImpl implements ExtractMethod {
         return variable.equals(INCREMENT_OPERATOR) || variable.equals(DECREMENT_OPERATOR);
     }
 
+    private void saveReturnTypeIndexStatement(Candidate candidate,
+                                              List<List<String>> rawVariablesContainsAssignment) {
+        if (!rawVariablesContainsAssignment.isEmpty()) {
+            Integer rawVariablesIndex = rawVariablesContainsAssignment.size() - SINGLE_LIST_SIZE;
+            List<String> rawVariableContainsAssignment = rawVariablesContainsAssignment.get(rawVariablesIndex);
+            Integer returnTypeStatementRawVariableIndex = candidate.getRawVariables()
+                    .indexOf(rawVariableContainsAssignment);
+
+            candidate.setReturnTypeStatementRawVariableIndex(returnTypeStatementRawVariableIndex);
+        }
+    }
+
     private Boolean isQualityValid(MethodModel methodModel, Candidate candidate) {
         BlockModel methodBlock = getMethodBlockStatement(methodModel.getStatements());
         BlockModel candidateBlock = getMethodBlockStatement(candidate.getStatements());
@@ -461,20 +476,19 @@ public class ExtractMethodImpl implements ExtractMethod {
     }
 
     private void scoringCandidates(MethodModel methodModel, List<Candidate> candidates) {
-        BlockModel methodBlock = getMethodBlockStatement(methodModel.getStatements());
-
         candidates.forEach(
-                candidate -> scoringCandidate(methodBlock, candidate));
+                candidate -> scoringCandidate(methodModel, candidate));
     }
 
-    private void scoringCandidate(BlockModel methodBlock, Candidate candidate) {
+    private void scoringCandidate(MethodModel methodModel, Candidate candidate) {
+        BlockModel methodBlock = getMethodBlockStatement(methodModel.getStatements());
         BlockModel candidateBlock = getMethodBlockStatement(candidate.getStatements());
         BlockModel remainingBlock = getRemainingBlockModel(methodBlock, candidateBlock);
 
         candidate.setLengthScore(calculateStatementLengthScore(candidateBlock, remainingBlock));
         candidate.setNestingDepthScore(calculateNestingDepthScore(methodBlock, candidateBlock, remainingBlock));
         candidate.setNestingAreaScore(calculateNestingAreaScore(methodBlock, candidateBlock, remainingBlock));
-        candidate.setParameterScore(calculateParameterScore(methodBlock, candidateBlock, remainingBlock));
+        candidate.setParameterScore(calculateParameterScore(methodModel, candidate));
 
         calculateTotalScore(candidate);
     }
@@ -572,12 +586,40 @@ public class ExtractMethodImpl implements ExtractMethod {
         count.set(count.get() + maxNestingDepth.get());
     }
 
-    private Double calculateParameterScore(BlockModel methodBlock, BlockModel candidateBlock,
-                                           BlockModel remainingBlock) {
-        Integer parameterIn = 0;
+    private Double calculateParameterScore(MethodModel methodModel, Candidate candidate) {
+        candidate.setParameters(getCandidateParameters(methodModel, candidate));
+
+        Integer parameterIn = candidate.getParameters().size();
         Integer parameterOut = 0;
 
         return parameterScoreMax - parameterIn - parameterOut;
+    }
+
+    private List<PropertyModel> getCandidateParameters(MethodModel methodModel, Candidate candidate) {
+        Stream<PropertyModel> parametersFromLocalVariable = candidate.getGlobalVariables()
+                .stream()
+                .map(variable -> getMethodVariable(methodModel.getLocalVariables(), variable))
+                .filter(Objects::nonNull);
+
+        Stream<PropertyModel> parametersFromMethodParameters = candidate.getGlobalVariables()
+                .stream()
+                .map(variable -> getMethodVariable(methodModel.getParameters(), variable))
+                .filter(Objects::nonNull);
+
+        return Stream.concat(parametersFromLocalVariable, parametersFromMethodParameters)
+                .collect(Collectors.toList());
+    }
+
+    private PropertyModel getMethodVariable(List<PropertyModel> variables, String variable) {
+        return variables.stream()
+                .filter(propertyModel -> isLocalVariableNameEquals(propertyModel, variable))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private PropertyModel createReturnType(MethodModel methodModel, Candidate candidate) {
+        Integer returnTypeStatementRawVariableIndex = candidate.getReturnTypeStatementRawVariableIndex();
+        return null;
     }
 
     private void calculateTotalScore(Candidate candidate) {

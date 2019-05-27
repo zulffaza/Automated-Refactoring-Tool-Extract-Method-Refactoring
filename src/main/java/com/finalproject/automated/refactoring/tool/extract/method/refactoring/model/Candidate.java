@@ -37,6 +37,8 @@ public class Candidate {
 
     private String returnTypeStatement;
 
+    private Integer returnTypeStatementRawVariableIndex;
+
     private Double lengthScore;
 
     private Double nestingDepthScore;
