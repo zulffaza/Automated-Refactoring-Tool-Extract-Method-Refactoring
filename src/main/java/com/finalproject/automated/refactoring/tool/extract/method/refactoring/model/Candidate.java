@@ -2,6 +2,7 @@ package com.finalproject.automated.refactoring.tool.extract.method.refactoring.m
 
 import com.finalproject.automated.refactoring.tool.model.PropertyModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
+import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
 import lombok.Builder;
 import lombok.Data;
 
@@ -22,7 +23,7 @@ public class Candidate {
     private List<StatementModel> statements = new ArrayList<>();
 
     @Builder.Default
-    private List<PropertyModel> localVariables = new ArrayList<>();
+    private List<VariablePropertyModel> localVariables = new ArrayList<>();
 
     @Builder.Default
     private List<String> globalVariables = new ArrayList<>();

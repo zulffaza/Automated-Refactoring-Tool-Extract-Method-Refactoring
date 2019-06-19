@@ -11,5 +11,5 @@ import lombok.NonNull;
 
 public interface ExtractMethod {
 
-    void refactoring(@NonNull MethodModel methodModel);
+    void refactoring(@NonNull String path, @NonNull MethodModel methodModel);
 }

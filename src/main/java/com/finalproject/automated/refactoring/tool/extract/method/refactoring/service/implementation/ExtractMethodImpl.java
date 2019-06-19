@@ -1,11 +1,15 @@
 package com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.implementation;
 
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.Candidate;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.ReadStatementIndexVA;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.SaveVariableVA;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.PropertyModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
+import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
+import com.finalproject.automated.refactoring.tool.utils.service.MethodModelHelper;
 import com.finalproject.automated.refactoring.tool.utils.service.VariableHelper;
 import lombok.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,10 +17,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -32,6 +36,9 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     @Autowired
     private VariableHelper variableHelper;
+
+    @Autowired
+    private MethodModelHelper methodModelHelper;
 
     @Value("${threshold.min.candidate.statements}")
     private Integer minCandidateStatements;
@@ -49,26 +56,39 @@ public class ExtractMethodImpl implements ExtractMethod {
     private Double parameterScoreMax;
 
     private static final String GLOBAL_VARIABLE_PREFIX = "this.";
+    private static final String EMPTY_STRING = "";
     private static final String ASSIGMENT_OPERATOR = "=";
     private static final String EQUAL_TO_OPERATOR = "==";
     private static final String NOT_EQUAL_TO_OPERATOR = "!=";
     private static final String INCREMENT_OPERATOR = "++";
     private static final String DECREMENT_OPERATOR = "--";
+    private static final String EXTRACTED_METHOD_KEYWORD = "private";
+    private static final String EXTRACTED_METHOD_NAME_SUFFIX = "Extracted";
+    private static final String NEW_LINE = "\n";
+    private static final String TAB = "\t";
+    private static final String METHOD_CALL_SUFFIX = "();";
 
     private static final Integer SINGLE_LIST_SIZE = 1;
     private static final Integer FIRST_INDEX = 0;
     private static final Integer SECOND_INDEX = 1;
 
     @Override
-    public void refactoring(@NonNull MethodModel methodModel) {
+    public void refactoring(@NonNull String path, @NonNull MethodModel methodModel) {
         List<Candidate> candidates = getCandidates(methodModel);
         scoringCandidates(methodModel, candidates);
         sortingCandidates(candidates);
 
-        candidates.forEach(System.out::println);
+        Candidate bestCandidate = candidates.get(FIRST_INDEX);
+        MethodModel candidateMethodModel = createMethodModelFromCandidate(methodModel, bestCandidate);
+
+        System.out.println("Best candidate --> " + bestCandidate);
+        System.out.println("Best score --> " + bestCandidate.getTotalScore());
         System.out.println();
-        System.out.println("Best candidate --> " + candidates.get(0));
-        System.out.println("Best score --> " + candidates.get(0).getTotalScore());
+        System.out.println(methodModelHelper.createMethod(methodModel));
+        System.out.println();
+        System.out.println(methodModelHelper.createMethod(candidateMethodModel));
+        System.out.println();
+        System.out.println(methodModelHelper.createMethod(createRemainingMethodModel(methodModel, candidateMethodModel)));
     }
 
     private List<Candidate> getCandidates(MethodModel methodModel) {
@@ -111,8 +131,8 @@ public class ExtractMethodImpl implements ExtractMethod {
     private Stream<Candidate> searchCandidates(List<StatementModel> statements) {
         List<Candidate> candidates = new ArrayList<>();
 
-        for (int i = 0; i < statements.size(); i++) {
-            for (int j = i + 1; j <= statements.size(); j++) {
+        for (int i = FIRST_INDEX; i < statements.size(); i++) {
+            for (int j = i + SECOND_INDEX; j <= statements.size(); j++) {
                 Candidate candidate = buildCandidate(statements.subList(i, j));
                 candidates.add(candidate);
             }
@@ -140,19 +160,23 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private void readStatement(StatementModel statementModel, Candidate candidate) {
         List<String> variables = variableHelper.readVariable(statementModel.getStatement());
-        saveVariables(variables, candidate);
+        saveVariables(statementModel, variables, candidate);
 
         if (statementModel instanceof BlockModel) {
             readBlockStatement(statementModel, candidate);
         }
     }
 
-    private void saveVariables(List<String> variables, Candidate candidate) {
-        AtomicBoolean isClass = new AtomicBoolean();
+    private void saveVariables(StatementModel statementModel, List<String> variables,
+                               Candidate candidate) {
+        SaveVariableVA saveVariableVA = SaveVariableVA.builder()
+                .statementModel(statementModel)
+                .candidate(candidate)
+                .build();
 
         variables.stream()
                 .filter(this::isNotOperators)
-                .forEach(variable -> saveVariable(variable, isClass, candidate));
+                .forEach(variable -> saveVariable(variable, saveVariableVA));
 
         candidate.getRawVariables().add(variables);
     }
@@ -161,11 +185,13 @@ public class ExtractMethodImpl implements ExtractMethod {
         return !variable.matches(VariableHelper.OPERATORS_CHARACTERS_REGEX);
     }
 
-    private void saveVariable(String variable, AtomicBoolean isClass, Candidate candidate) {
+    private void saveVariable(String variable, SaveVariableVA saveVariableVA) {
         if (isPropertyType(variable)) {
-            savePropertyType(variable, isClass, candidate);
+            savePropertyType(variable, saveVariableVA);
+        } else if (checkGlobalVariable(variable)) {
+            saveGlobalVariableWithPreProcessing(variable, saveVariableVA.getCandidate());
         } else {
-            checkVariableDomain(variable, isClass, candidate);
+            checkVariableDomain(variable, saveVariableVA);
         }
     }
 
@@ -174,32 +200,53 @@ public class ExtractMethodImpl implements ExtractMethod {
                 variableHelper.isClassName(variable);
     }
 
-    private void savePropertyType(String variable, AtomicBoolean isClass, Candidate candidate) {
-        PropertyModel propertyModel = PropertyModel.builder()
-                .type(variable)
+    private void savePropertyType(String variable, SaveVariableVA saveVariableVA) {
+        VariablePropertyModel variablePropertyModel = VariablePropertyModel.variablePropertyBuilder()
+                .statementIndex(saveVariableVA.getStatementModel().getIndex())
                 .build();
 
-        candidate.getLocalVariables()
-                .add(propertyModel);
+        variablePropertyModel.setType(variable);
 
-        isClass.set(Boolean.TRUE);
+        saveVariableVA.getCandidate()
+                .getLocalVariables()
+                .add(variablePropertyModel);
+
+        saveVariableVA.getIsClass()
+                .set(Boolean.TRUE);
     }
 
-    private void checkVariableDomain(String variable, AtomicBoolean isClass, Candidate candidate) {
-        if (isClass.get()) {
-            saveLocalVariable(variable, isClass, candidate);
+    private Boolean checkGlobalVariable(String variable) {
+        return variable.startsWith(GLOBAL_VARIABLE_PREFIX);
+    }
+
+    private void saveGlobalVariableWithPreProcessing(String variable, Candidate candidate) {
+        variable = variable.replace(GLOBAL_VARIABLE_PREFIX, EMPTY_STRING);
+        saveGlobalVariable(variable, candidate);
+    }
+
+    private void saveGlobalVariable(String variable, Candidate candidate) {
+        candidate.getGlobalVariables()
+                .add(variable);
+    }
+
+    private void checkVariableDomain(String variable, SaveVariableVA saveVariableVA) {
+        if (saveVariableVA.getIsClass().get()) {
+            saveLocalVariable(variable, saveVariableVA);
         } else {
-            checkVariable(variable, candidate);
+            checkVariable(variable, saveVariableVA.getCandidate());
         }
     }
 
-    private void saveLocalVariable(String variable, AtomicBoolean isClass, Candidate candidate) {
-        candidate.getLocalVariables()
+    private void saveLocalVariable(String variable, SaveVariableVA saveVariableVA) {
+        saveVariableVA.getCandidate()
+                .getLocalVariables()
                 .stream()
                 .filter(this::isNoNameLocalVariable)
-                .forEach(propertyModel -> saveLocalVariableName(propertyModel, variable));
+                .forEach(propertyModel ->
+                        saveLocalVariableName(propertyModel, variable));
 
-        isClass.set(Boolean.FALSE);
+        saveVariableVA.getIsClass()
+                .set(Boolean.FALSE);
     }
 
     private Boolean isNoNameLocalVariable(PropertyModel propertyModel) {
@@ -245,11 +292,6 @@ public class ExtractMethodImpl implements ExtractMethod {
                 candidate.getGlobalVariables().contains(globalVariable);
     }
 
-    private void saveGlobalVariable(String variable, Candidate candidate) {
-        candidate.getGlobalVariables()
-                .add(variable);
-    }
-
     private void readBlockStatement(StatementModel statementModel, Candidate candidate) {
         ((BlockModel) statementModel).getStatements()
                 .forEach(blockStatementModel -> readStatement(blockStatementModel, candidate));
@@ -266,9 +308,8 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .filter(rawVariables -> isContainsAssignment(methodModel, candidate, rawVariables))
                 .collect(Collectors.toList());
 
-        saveReturnTypeIndexStatement(candidate, rawVariablesContainsAssigment);
-
-        return rawVariablesContainsAssigment.size() <= SINGLE_LIST_SIZE;
+        return rawVariablesContainsAssigment.size() <= SINGLE_LIST_SIZE &&
+                checkAndSaveReturnTypeIndexStatement(candidate, methodModel, rawVariablesContainsAssigment);
     }
 
     private Boolean isContainsAssignment(MethodModel methodModel, Candidate candidate,
@@ -296,8 +337,12 @@ public class ExtractMethodImpl implements ExtractMethod {
         String secondVariable = rawVariables.get(SECOND_INDEX);
 
         if (isContainsAssignmentOperators(secondVariable)) {
-            Boolean isLocalVariable = isLocalVariable(candidate.getLocalVariables(), firstVariable);
-            Boolean isMethodLocalVariable = isLocalVariable(methodModel.getLocalVariables(), firstVariable);
+            Integer variableStatementIndex = getRawVariablesStatementIndex(candidate, rawVariables);
+
+            Boolean isLocalVariable = isLocalVariable(candidate.getLocalVariables(),
+                    firstVariable, variableStatementIndex);
+            Boolean isMethodLocalVariable = isLocalVariable(methodModel.getLocalVariables(),
+                    firstVariable, variableStatementIndex);
 
             isAssigment = !isLocalVariable && isMethodLocalVariable;
         }
@@ -305,15 +350,67 @@ public class ExtractMethodImpl implements ExtractMethod {
         return isAssigment;
     }
 
+    private Integer getRawVariablesStatementIndex(Candidate candidate, List<String> rawVariables) {
+        Integer variableStatementIndex = candidate.getRawVariables()
+                .indexOf(rawVariables);
+
+        return getRealStatementIndex(candidate, variableStatementIndex);
+    }
+
+    private Integer getRealStatementIndex(Candidate candidate, Integer variableStatementIndex) {
+        ReadStatementIndexVA readStatementIndexVA = ReadStatementIndexVA.builder()
+                .variableStatementIndex(variableStatementIndex)
+                .build();
+        BlockModel candidateBlock = getMethodBlockStatement(candidate.getStatements());
+
+        readBlockStatementIndex(candidateBlock, readStatementIndexVA);
+
+        return readStatementIndexVA.getRealStatementIndex();
+    }
+
+    private BlockModel getMethodBlockStatement(List<StatementModel> statements) {
+        return BlockModel.blockBuilder()
+                .statements(new ArrayList<>(statements))
+                .build();
+    }
+
+    private void readBlockStatementIndex(BlockModel blockModel,
+                                         ReadStatementIndexVA readStatementIndexVA) {
+        blockModel.getStatements()
+                .forEach(statementModel -> readStatementIndex(statementModel, readStatementIndexVA));
+    }
+
+    private void readStatementIndex(StatementModel statementModel,
+                                    ReadStatementIndexVA readStatementIndexVA) {
+        Integer statementCount = readStatementIndexVA.getStatementCount()
+                .getAndIncrement();
+
+        if (statementCount.equals(readStatementIndexVA.getVariableStatementIndex())) {
+            readStatementIndexVA.setRealStatementIndex(statementModel.getIndex());
+        }
+
+        if (statementModel instanceof BlockModel) {
+            readBlockStatementIndex((BlockModel) statementModel, readStatementIndexVA);
+        }
+    }
+
     private Boolean isContainsAssignmentOperators(String variable) {
         return variable.contains(ASSIGMENT_OPERATOR) &&
                 (!variable.contains(EQUAL_TO_OPERATOR) || !variable.contains(NOT_EQUAL_TO_OPERATOR));
     }
 
-    private Boolean isLocalVariable(List<PropertyModel> localVariables, String variable) {
+    private Boolean isLocalVariable(List<VariablePropertyModel> localVariables,
+                                    String variable, Integer maxIndexStatement) {
         return localVariables.stream()
+                .filter(variablePropertyModel ->
+                        isValidLocalVariableSearch(variablePropertyModel, maxIndexStatement))
                 .anyMatch(localVariable ->
                         isLocalVariableNameEquals(localVariable, variable));
+    }
+
+    private Boolean isValidLocalVariableSearch(VariablePropertyModel variablePropertyModel,
+                                               Integer maxIndexStatement) {
+        return variablePropertyModel.getStatementIndex() < maxIndexStatement;
     }
 
     private Boolean isLocalVariableNameEquals(PropertyModel localVariable, String variable) {
@@ -329,10 +426,13 @@ public class ExtractMethodImpl implements ExtractMethod {
             String variable = rawVariables.get(index);
 
             if (containsIncrementOrDecrement(variable)) {
+                Integer variableStatementIndex = getRawVariablesStatementIndex(candidate, rawVariables);
                 variable = getVariableWhichUses(rawVariables, index);
 
-                Boolean isLocalVariable = isLocalVariable(candidate.getLocalVariables(), variable);
-                Boolean isMethodLocalVariable = isLocalVariable(methodModel.getLocalVariables(), variable);
+                Boolean isLocalVariable = isLocalVariable(candidate.getLocalVariables(),
+                        variable, variableStatementIndex);
+                Boolean isMethodLocalVariable = isLocalVariable(methodModel.getLocalVariables(),
+                        variable, variableStatementIndex);
 
                 isIncrementOrDecrement = !isLocalVariable && isMethodLocalVariable;
             }
@@ -372,16 +472,24 @@ public class ExtractMethodImpl implements ExtractMethod {
         return variable.equals(INCREMENT_OPERATOR) || variable.equals(DECREMENT_OPERATOR);
     }
 
-    private void saveReturnTypeIndexStatement(Candidate candidate,
-                                              List<List<String>> rawVariablesContainsAssignment) {
+    private Boolean checkAndSaveReturnTypeIndexStatement(Candidate candidate,
+                                                         MethodModel methodModel,
+                                                         List<List<String>> rawVariablesContainsAssignment) {
+        Boolean isLastStatement = Boolean.TRUE;
+
         if (!rawVariablesContainsAssignment.isEmpty()) {
             Integer rawVariablesIndex = rawVariablesContainsAssignment.size() - SINGLE_LIST_SIZE;
+            Integer lastStatementIndex = methodModel.getStatements().size() - SINGLE_LIST_SIZE;
             List<String> rawVariableContainsAssignment = rawVariablesContainsAssignment.get(rawVariablesIndex);
             Integer returnTypeStatementRawVariableIndex = candidate.getRawVariables()
                     .indexOf(rawVariableContainsAssignment);
 
             candidate.setReturnTypeStatementRawVariableIndex(returnTypeStatementRawVariableIndex);
+            isLastStatement = returnTypeStatementRawVariableIndex.equals(
+                    methodModel.getStatements().get(lastStatementIndex).getIndex());
         }
+
+        return isLastStatement;
     }
 
     private Boolean isQualityValid(MethodModel methodModel, Candidate candidate) {
@@ -394,12 +502,6 @@ public class ExtractMethodImpl implements ExtractMethod {
 
         return (candidateStatementCount >= minCandidateStatements) &&
                 (remainingStatementCount >= minCandidateStatements);
-    }
-
-    private BlockModel getMethodBlockStatement(List<StatementModel> statements) {
-        return BlockModel.blockBuilder()
-                .statements(new ArrayList<>(statements))
-                .build();
     }
 
     private BlockModel getRemainingBlockModel(BlockModel methodBlock, BlockModel candidateBlock) {
@@ -415,6 +517,7 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .endOfBlockStatement(blockMethod.getEndOfBlockStatement())
                 .build();
         copyBlockMethod.setStatement(blockMethod.getStatement());
+        copyBlockMethod.setIndex(blockMethod.getIndex());
         copyBlockMethod.setStartIndex(blockMethod.getStartIndex());
         copyBlockMethod.setEndIndex(blockMethod.getEndIndex());
         copyListStatements(copyBlockMethod);
@@ -425,7 +528,7 @@ public class ExtractMethodImpl implements ExtractMethod {
     private void copyListStatements(BlockModel blockMethod) {
         int size = blockMethod.getStatements().size();
 
-        for (int i = 0; i < size; i++) {
+        for (int i = FIRST_INDEX; i < size; i++) {
             replaceBlockMethod(blockMethod, i);
         }
     }
@@ -590,7 +693,9 @@ public class ExtractMethodImpl implements ExtractMethod {
         candidate.setParameters(getCandidateParameters(methodModel, candidate));
 
         Integer parameterIn = candidate.getParameters().size();
-        Integer parameterOut = 0;
+        Integer parameterOut = getReturnType(candidate);
+
+        // TODO create return type statement
 
         return parameterScoreMax - parameterIn - parameterOut;
     }
@@ -610,11 +715,19 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .collect(Collectors.toList());
     }
 
-    private PropertyModel getMethodVariable(List<PropertyModel> variables, String variable) {
-        return variables.stream()
-                .filter(propertyModel -> isLocalVariableNameEquals(propertyModel, variable))
+    private PropertyModel getMethodVariable(List variables, String variable) {
+        return (PropertyModel) variables.stream()
+                .filter(propertyModel -> isLocalVariableNameEquals((PropertyModel) propertyModel, variable))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private Integer getReturnType(Candidate candidate) {
+        if (candidate.getReturnTypeStatementRawVariableIndex() != null) {
+            return 1;
+        } else {
+            return 0;
+        }
     }
 
     private PropertyModel createReturnType(MethodModel methodModel, Candidate candidate) {
@@ -629,5 +742,165 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private void sortingCandidates(List<Candidate> candidates) {
         candidates.sort(Comparator.comparing(Candidate::getTotalScore).reversed());
+    }
+
+    private MethodModel createMethodModelFromCandidate(MethodModel methodModel,
+                                                       Candidate candidate) {
+        String extractedMethodName = methodModel.getName() + EXTRACTED_METHOD_NAME_SUFFIX;
+
+        return MethodModel.builder()
+                .keywords(Collections.singletonList(EXTRACTED_METHOD_KEYWORD))
+                .returnType("void")
+                .name(extractedMethodName)
+                .parameters(candidate.getParameters())
+                .globalVariables(candidate.getGlobalVariables())
+                .localVariables(candidate.getLocalVariables())
+                .body(createMethodBody(candidate.getStatements()))
+                .statements(candidate.getStatements())
+                .build();
+    }
+
+    private String createMethodBody(List<StatementModel> statements) {
+        StringBuilder body = new StringBuilder();
+        AtomicInteger depth = new AtomicInteger();
+
+        buildMethodBody(statements, depth, body);
+
+        return body.toString().trim();
+    }
+
+    private void buildMethodBody(List<StatementModel> statements,
+                                 AtomicInteger depth, StringBuilder body) {
+        depth.incrementAndGet();
+
+        for (int index = FIRST_INDEX; index < statements.size(); index++) {
+            appendStatementToBody(statements.get(index), depth, body);
+        }
+
+        depth.decrementAndGet();
+    }
+
+    private void appendStatementToBody(StatementModel statementModel,
+                                       AtomicInteger depth, StringBuilder body) {
+        String statement = createStatementToAppend(statementModel, depth);
+        body.append(statement);
+
+        if (statementModel instanceof BlockModel) {
+            appendBlockStatementToBody(statementModel, depth, body);
+        }
+    }
+
+    private String createStatementToAppend(StatementModel statementModel,
+                                           AtomicInteger depth) {
+        StringBuilder statement = new StringBuilder();
+        appendTabsToStatement(statement, depth);
+
+        statement.append(statementModel.getStatement());
+        statement.append(NEW_LINE);
+
+        return statement.toString();
+    }
+
+    private void appendTabsToStatement(StringBuilder statement, AtomicInteger depth) {
+        for (int i = FIRST_INDEX; i < depth.get(); i++)
+            statement.append(TAB);
+    }
+
+    private void appendBlockStatementToBody(StatementModel statementModel,
+                                            AtomicInteger depth, StringBuilder body) {
+        BlockModel blockModel = (BlockModel) statementModel;
+
+        buildMethodBody(blockModel.getStatements(), depth, body);
+        appendEndOfBlockStatement(blockModel, depth, body);
+    }
+
+    private void appendEndOfBlockStatement(BlockModel blockModel, AtomicInteger depth,
+                                           StringBuilder body) {
+        String statement = createStatementToAppend(blockModel.getEndOfBlockStatement(), depth);
+        body.append(statement);
+    }
+
+    private MethodModel createRemainingMethodModel(MethodModel methodModel,
+                                                   MethodModel extractedMethodModel) {
+        BlockModel methodBlock = getMethodBlockStatement(methodModel.getStatements());
+        BlockModel candidateBlock = getMethodBlockStatement(extractedMethodModel.getStatements());
+        BlockModel remainingBlock = getRemainingBlockModel(methodBlock, candidateBlock);
+
+        addCallExtractedMethodStatement(remainingBlock.getStatements(), extractedMethodModel);
+
+        return MethodModel.builder()
+                .keywords(methodModel.getKeywords())
+                .returnType(methodModel.getReturnType())
+                .name(methodModel.getName())
+                .parameters(methodModel.getParameters())
+                .body(createMethodBody(remainingBlock.getStatements()))
+                .statements(remainingBlock.getStatements())
+                .build();
+    }
+
+    private void addCallExtractedMethodStatement(List<StatementModel> statements,
+                                                 MethodModel extractedMethodModel) {
+        statements.forEach(statementModel ->
+                checkStatementModel(statementModel, extractedMethodModel));
+
+        writeCallExtractedMethodStatement(statements, statements.get(FIRST_INDEX), extractedMethodModel);
+    }
+
+    private void checkStatementModel(StatementModel statementModel,
+                                     MethodModel extractedMethodModel) {
+        if (statementModel instanceof BlockModel) {
+            BlockModel blockModel = (BlockModel) statementModel;
+
+            writeCallExtractedMethodBlockStatement(blockModel, extractedMethodModel);
+            addCallExtractedMethodStatement(blockModel.getStatements(), extractedMethodModel);
+        }
+    }
+
+    private void writeCallExtractedMethodBlockStatement(BlockModel blockModel,
+                                                        MethodModel extractedMethodModel) {
+        Integer firstExtractedStatementIndex = extractedMethodModel.getStatements()
+                .get(FIRST_INDEX)
+                .getIndex();
+
+        if (isNeedWriteCallExtractedMethodStatement(blockModel, firstExtractedStatementIndex)) {
+            StatementModel statementModel = createCallExtractedMethodStatement(
+                    extractedMethodModel, firstExtractedStatementIndex);
+            blockModel.getStatements().add(FIRST_INDEX, statementModel);
+        }
+    }
+
+    private Boolean isNeedWriteCallExtractedMethodStatement(StatementModel statementModel,
+                                                            Integer firstExtractedStatementIndex) {
+        return statementModel.getIndex().equals(firstExtractedStatementIndex - SECOND_INDEX);
+    }
+
+    private void writeCallExtractedMethodStatement(List<StatementModel> statements,
+                                                   StatementModel statementModel,
+                                                   MethodModel extractedMethodModel) {
+        Integer firstExtractedStatementIndex = extractedMethodModel.getStatements()
+                .get(FIRST_INDEX)
+                .getIndex();
+
+        if (isWriteOnMethodStatement(statementModel, firstExtractedStatementIndex)) {
+            StatementModel newStatementModel = createCallExtractedMethodStatement(
+                    extractedMethodModel, firstExtractedStatementIndex);
+            statements.add(newStatementModel);
+        }
+    }
+
+    private Boolean isWriteOnMethodStatement(StatementModel statementModel,
+                                             Integer firstExtractedStatementIndex) {
+        return !(statementModel instanceof BlockModel) &&
+                isNeedWriteCallExtractedMethodStatement(statementModel, firstExtractedStatementIndex);
+    }
+
+    private StatementModel createCallExtractedMethodStatement(MethodModel extractedMethodModel,
+                                                              Integer firstExtractedStatementIndex) {
+        String statement = extractedMethodModel.getName() + METHOD_CALL_SUFFIX;
+
+        return StatementModel.statementBuilder()
+                .index(firstExtractedStatementIndex)
+                .statement(statement)
+                .build();
     }
 }
