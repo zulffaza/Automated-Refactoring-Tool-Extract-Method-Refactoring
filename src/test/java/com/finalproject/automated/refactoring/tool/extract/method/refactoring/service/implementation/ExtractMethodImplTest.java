@@ -5,6 +5,7 @@ import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -22,6 +23,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author fazazulfikapp
@@ -43,12 +47,14 @@ public class ExtractMethodImplTest {
     private static final String RETURN_TYPE = "Rectangle2D";
     private static final String METHOD_NAME = "getFigureDrawBounds";
 
+    private MethodModel methodModel;
+
     private Path path;
 
-    @Test
-    public void test() throws IOException {
+    @Before
+    public void setUp() throws IOException {
         File file = temporaryFolder.newFile();
-        MethodModel methodModel = MethodModel.builder()
+        methodModel = MethodModel.builder()
                 .keywords(Collections.singletonList(KEYWORD))
                 .returnType(RETURN_TYPE)
                 .name(METHOD_NAME)
@@ -57,11 +63,15 @@ public class ExtractMethodImplTest {
                 .body(createBody())
                 .statements(createExpectedStatements())
                 .build();
-
         path = Paths.get(file.getPath());
-        Files.write(path, createFileContent().getBytes());
 
-        extractMethod.refactoring(path.toString(), methodModel);
+        Files.write(path, createFileContent().getBytes());
+    }
+
+    @Test
+    public void refactoring_success() throws IOException {
+        assertTrue(extractMethod.refactoring(path.toString(), methodModel));
+        assertEquals(createExpectedFileContent(), new String(Files.readAllBytes(path)));
     }
 
     private String createBody() {
@@ -356,5 +366,39 @@ public class ExtractMethodImplTest {
 
     private List<String> createGlobalVariables() {
         return Arrays.asList("START", "END");
+    }
+
+    private String createExpectedFileContent() {
+        return "package com.test;\n" +
+                "\n" +
+                "/**\n" +
+                " * @author Faza Zulfika P P\n" +
+                " * @version 1.0.0\n" +
+                " * @since 20 June 2019\n" +
+                " */\n" +
+                "\n" +
+                "public class Test {\n" +
+                "\n" +
+                "    public Rectangle2D getFigureDrawBounds() {\n" +
+                "\t\tRectangle2D r = super.getFigDrawBounds();\n" +
+                "\t\tif (getNodeCount() > 1) {\n" +
+                "\t\t\tgetFigureDrawBoundsExtracted();\n" +
+                "\t\t}\n" +
+                "\t\treturn r;\n" +
+                "\t}\n" +
+                "\n" +
+                "\tprivate void getFigureDrawBoundsExtracted(Rectangle2D r) {\n" +
+                "\t\tif (START.get(this) != null) {\n" +
+                "\t\t\tPoint p1 = getPoint(0, 0);\n" +
+                "\t\t\tPoint p2 = getPoint(1, 0);\n" +
+                "\t\t\tr.add(START.get(this).getBounds(p1, p2));\n" +
+                "\t\t}\n" +
+                "\t\tif (END.get(this) != null) {\n" +
+                "\t\t\tPoint p1 = getPoint(getNodeCount() - 1, 0);\n" +
+                "\t\t\tPoint p2 = getPoint(getNodeCount() - 2, 0);\n" +
+                "\t\t\tr.add(END.get(this).getBounds(p1, p2));\n" +
+                "\t\t}\n" +
+                "\t}\n" +
+                "}";
     }
 }
