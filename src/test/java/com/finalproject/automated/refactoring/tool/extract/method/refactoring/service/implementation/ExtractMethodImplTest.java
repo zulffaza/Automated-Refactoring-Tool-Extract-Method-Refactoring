@@ -5,12 +5,19 @@ import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,16 +33,21 @@ import java.util.List;
 @SpringBootTest
 public class ExtractMethodImplTest {
 
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
+
     @Autowired
     private ExtractMethod extractMethod;
 
-    private static final String PATH = "methodFilePath";
     private static final String KEYWORD = "public";
     private static final String RETURN_TYPE = "Rectangle2D";
     private static final String METHOD_NAME = "getFigureDrawBounds";
 
+    private Path path;
+
     @Test
-    public void test() {
+    public void test() throws IOException {
+        File file = temporaryFolder.newFile();
         MethodModel methodModel = MethodModel.builder()
                 .keywords(Collections.singletonList(KEYWORD))
                 .returnType(RETURN_TYPE)
@@ -46,11 +58,15 @@ public class ExtractMethodImplTest {
                 .statements(createExpectedStatements())
                 .build();
 
-        extractMethod.refactoring(PATH, methodModel);
+        path = Paths.get(file.getPath());
+        Files.write(path, createFileContent().getBytes());
+
+        extractMethod.refactoring(path.toString(), methodModel);
     }
 
     private String createBody() {
         return "Rectangle2D r = super.getFigDrawBounds();\n" +
+                "\n" +
                 "    if (getNodeCount() > 1) {\n" +
                 "        if (START.get(this) != null) {\n" +
                 "            Point p1 = getPoint(0, 0);\n" +
@@ -63,7 +79,40 @@ public class ExtractMethodImplTest {
                 "            r.add(END.get(this).getBounds(p1, p2));\n" +
                 "        }\n" +
                 "    }\n" +
+                "\n" +
                 "    return r;";
+    }
+
+    private String createFileContent() {
+        return "package com.test;\n" +
+                "\n" +
+                "/**\n" +
+                " * @author Faza Zulfika P P\n" +
+                " * @version 1.0.0\n" +
+                " * @since 20 June 2019\n" +
+                " */\n" +
+                "\n" +
+                "public class Test {\n" +
+                "\n" +
+                "    public Rectangle2D getFigureDrawBounds() {\n" +
+                "        Rectangle2D r = super.getFigDrawBounds();\n" +
+                "\n" +
+                "        if (getNodeCount() > 1) {\n" +
+                "            if (START.get(this) != null) {\n" +
+                "                Point p1 = getPoint(0, 0);\n" +
+                "                Point p2 = getPoint(1, 0);\n" +
+                "                r.add(START.get(this).getBounds(p1, p2));\n" +
+                "            }\n" +
+                "            if (END.get(this) != null) {\n" +
+                "                Point p1 = getPoint(getNodeCount() - 1, 0);\n" +
+                "                Point p2 = getPoint(getNodeCount() - 2, 0);\n" +
+                "                r.add(END.get(this).getBounds(p1, p2));\n" +
+                "            }\n" +
+                "        }\n" +
+                "\n" +
+                "        return r;\n" +
+                "    }\n" +
+                "}";
     }
 
     private List<StatementModel> createExpectedStatements() {

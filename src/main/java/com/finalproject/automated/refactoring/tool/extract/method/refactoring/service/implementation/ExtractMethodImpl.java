@@ -9,7 +9,9 @@ import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.PropertyModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
+import com.finalproject.automated.refactoring.tool.utils.model.request.ReplaceFileVA;
 import com.finalproject.automated.refactoring.tool.utils.service.MethodModelHelper;
+import com.finalproject.automated.refactoring.tool.utils.service.ReplaceFileHelper;
 import com.finalproject.automated.refactoring.tool.utils.service.VariableHelper;
 import lombok.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -39,6 +42,9 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     @Autowired
     private MethodModelHelper methodModelHelper;
+
+    @Autowired
+    private ReplaceFileHelper replaceFileHelper;
 
     @Value("${threshold.min.candidate.statements}")
     private Integer minCandidateStatements;
@@ -79,16 +85,12 @@ public class ExtractMethodImpl implements ExtractMethod {
         sortingCandidates(candidates);
 
         Candidate bestCandidate = candidates.get(FIRST_INDEX);
-        MethodModel candidateMethodModel = createMethodModelFromCandidate(methodModel, bestCandidate);
 
         System.out.println("Best candidate --> " + bestCandidate);
         System.out.println("Best score --> " + bestCandidate.getTotalScore());
         System.out.println();
-        System.out.println(methodModelHelper.createMethod(methodModel));
-        System.out.println();
-        System.out.println(methodModelHelper.createMethod(candidateMethodModel));
-        System.out.println();
-        System.out.println(methodModelHelper.createMethod(createRemainingMethodModel(methodModel, candidateMethodModel)));
+
+        replaceFile(path, methodModel, bestCandidate);
     }
 
     private List<Candidate> getCandidates(MethodModel methodModel) {
@@ -802,7 +804,7 @@ public class ExtractMethodImpl implements ExtractMethod {
     }
 
     private void appendTabsToStatement(StringBuilder statement, AtomicInteger depth) {
-        for (int i = FIRST_INDEX; i < depth.get(); i++)
+        for (int i = FIRST_INDEX; i <= depth.get(); i++)
             statement.append(TAB);
     }
 
@@ -902,5 +904,54 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .index(firstExtractedStatementIndex)
                 .statement(statement)
                 .build();
+    }
+
+    private void replaceFile(String path, MethodModel methodModel, Candidate bestCandidate) {
+        MethodModel candidateMethodModel = createMethodModelFromCandidate(methodModel, bestCandidate);
+        MethodModel remainingMethodModel = createRemainingMethodModel(methodModel, candidateMethodModel);
+
+        String target = methodModelHelper.createMethodRegex(methodModel);
+        String replacement = createReplacementString(candidateMethodModel, remainingMethodModel);
+
+        ReplaceFileVA replaceFileVA = ReplaceFileVA.builder()
+                .filePath(path)
+                .target(target)
+                .replacement(replacement)
+                .build();
+
+        replaceFileHelper.replaceFile(replaceFileVA);
+    }
+
+    private String createReplacementString(MethodModel candidateMethodModel,
+                                           MethodModel remainingMethodModel) {
+        String candidateMethod = methodModelHelper.createMethod(candidateMethodModel);
+        String remainingMethod = methodModelHelper.createMethod(remainingMethodModel);
+
+        candidateMethod = normalizeMethodString(candidateMethod);
+        remainingMethod = normalizeMethodString(remainingMethod);
+
+        return buildReplacementString(candidateMethod, remainingMethod);
+    }
+
+    private String buildReplacementString(String candidateMethod,
+                                          String remainingMethod) {
+        String replacementString = remainingMethod;
+
+        replacementString += NEW_LINE;
+        replacementString += NEW_LINE;
+        replacementString += TAB;
+        replacementString += candidateMethod;
+
+        return replacementString;
+    }
+
+    private String normalizeMethodString(String method) {
+        List<String> statements = new ArrayList<>(Arrays.asList(method.split(NEW_LINE)));
+        Integer lastIndex = statements.size() - SECOND_INDEX;
+
+        statements.set(SECOND_INDEX, TAB + statements.get(SECOND_INDEX));
+        statements.set(lastIndex, TAB + statements.get(lastIndex));
+
+        return String.join(NEW_LINE, statements);
     }
 }
