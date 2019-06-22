@@ -24,8 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /**
  * @author fazazulfikapp
@@ -72,6 +71,21 @@ public class ExtractMethodImplTest {
     public void refactoring_success() throws IOException {
         assertTrue(extractMethod.refactoring(path.toString(), methodModel));
         assertEquals(createExpectedFileContent(), new String(Files.readAllBytes(path)));
+    }
+
+    @Test
+    public void refactoring_failed_pathNotFound() {
+        assertFalse(extractMethod.refactoring("", methodModel));
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void refactoring_failed_pathIsNull() {
+        extractMethod.refactoring(null, methodModel);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void refactoring_failed_methodModelIsNull() {
+        extractMethod.refactoring(path.toString(), null);
     }
 
     private String createBody() {
@@ -219,6 +233,7 @@ public class ExtractMethodImplTest {
     private StatementModel createThirdBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
+                .index(6)
                 .startIndex(301)
                 .endIndex(301)
                 .build();
@@ -277,6 +292,7 @@ public class ExtractMethodImplTest {
     private StatementModel createFourthBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
+                .index(10)
                 .startIndex(548)
                 .endIndex(548)
                 .build();
@@ -285,6 +301,7 @@ public class ExtractMethodImplTest {
     private StatementModel createSecondBlockEndStatement() {
         return StatementModel.statementBuilder()
                 .statement("}")
+                .index(10)
                 .startIndex(561)
                 .endIndex(561)
                 .build();
@@ -382,7 +399,7 @@ public class ExtractMethodImplTest {
                 "    public Rectangle2D getFigureDrawBounds() {\n" +
                 "\t\tRectangle2D r = super.getFigDrawBounds();\n" +
                 "\t\tif (getNodeCount() > 1) {\n" +
-                "\t\t\tgetFigureDrawBoundsExtracted();\n" +
+                "\t\t\tgetFigureDrawBoundsExtracted(r);\n" +
                 "\t\t}\n" +
                 "\t\treturn r;\n" +
                 "\t}\n" +
