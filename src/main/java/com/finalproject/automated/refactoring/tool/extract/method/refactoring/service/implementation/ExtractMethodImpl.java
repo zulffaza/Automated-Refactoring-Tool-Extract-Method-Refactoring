@@ -1,8 +1,12 @@
 package com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.implementation;
 
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.AddCallExtractedMethodVA;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.Candidate;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.GetFilteredRawVariablesVA;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.IsBlockCompleteVA;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.IsIfMissElseVA;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.ReadStatementIndexVA;
-import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.SaveVariableVA;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateVariableAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
@@ -21,13 +25,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,7 +43,7 @@ import java.util.stream.Stream;
 public class ExtractMethodImpl implements ExtractMethod {
 
     @Autowired
-    private VariableHelper variableHelper;
+    private CandidateVariableAnalysis candidateVariableAnalysis;
 
     @Autowired
     private MethodModelHelper methodModelHelper;
@@ -64,19 +66,26 @@ public class ExtractMethodImpl implements ExtractMethod {
     @Value("${parameter.score.max}")
     private Double parameterScoreMax;
 
-    private static final String GLOBAL_VARIABLE_PREFIX = "this.";
-    private static final String EMPTY_STRING = "";
     private static final String ASSIGMENT_OPERATOR = "=";
     private static final String EQUAL_TO_OPERATOR = "==";
     private static final String NOT_EQUAL_TO_OPERATOR = "!=";
     private static final String INCREMENT_OPERATOR = "++";
     private static final String DECREMENT_OPERATOR = "--";
-    private static final String EXTRACTED_METHOD_KEYWORD = "private";
+    private static final String AT = "@";
+    private static final String IF = "if";
+    private static final String ELSE = "else";
+    private static final String TRY = "try";
+    private static final String CATCH = "catch";
+    private static final String FINALLY = "finally";
+    private static final String DO = "do";
+    private static final String WHILE = "while";
+    private static final String METHOD_PUBLIC_MODIFIER = "public";
+    private static final String METHOD_PROTECTED_MODIFIER = "protected";
+    private static final String METHOD_PRIVATE_MODIFIER = "private";
     private static final String EXTRACTED_METHOD_NAME_SUFFIX = "Extracted";
     private static final String NEW_LINE = "\n";
     private static final String TAB = "\t";
     private static final String VOID_RETURN_TYPE = "void";
-    private static final String CATCH_BLOCK_REGEX = "}(?:\\s)*catch(?:\\s)*\\((?:\\s)*(?:[a-zA-Z0-9_$<>\\s|])*\\)(?:\\s)*{";
     private static final String METHOD_PARAMETER_PREFIX = "(";
     private static final String COMMA = ", ";
     private static final String METHOD_PARAMETER_SUFFIX = ");";
@@ -84,9 +93,13 @@ public class ExtractMethodImpl implements ExtractMethod {
     private static final Integer SINGLE_LIST_SIZE = 1;
     private static final Integer FIRST_INDEX = 0;
     private static final Integer SECOND_INDEX = 1;
-    private static final Integer EMPTY_SIZE = 0;
+    private static final Integer INVALID_INDEX = -1;
     private static final Integer RETURN_TYPE_VALID_SCORE = 1;
     private static final Integer RETURN_TYPE_INVALID_SCORE = 0;
+
+    private static final List<String> REMOVED_MODIFIERS = Arrays.asList(
+            METHOD_PUBLIC_MODIFIER, METHOD_PROTECTED_MODIFIER, METHOD_PRIVATE_MODIFIER
+    );
 
     @Override
     public Boolean refactoring(@NonNull String path, @NonNull MethodModel methodModel) {
@@ -105,6 +118,7 @@ public class ExtractMethodImpl implements ExtractMethod {
     private Candidate searchBestExtractCandidate(MethodModel methodModel) {
         List<Candidate> candidates = getCandidates(methodModel);
         scoringCandidates(methodModel, candidates);
+        pruningCandidates(candidates);
         sortingCandidates(candidates);
 
         return candidates.get(FIRST_INDEX);
@@ -113,8 +127,8 @@ public class ExtractMethodImpl implements ExtractMethod {
     private List<Candidate> getCandidates(MethodModel methodModel) {
         List<List<StatementModel>> blocksMethod = getAllBlocksMethod(methodModel);
 
-        return blocksMethod.parallelStream()
-                .flatMap(this::searchCandidates)
+        return blocksMethod.stream()
+                .flatMap(statements -> searchCandidates(methodModel, statements))
                 .filter(candidate -> isCandidateValid(methodModel, candidate))
                 .collect(Collectors.toList());
     }
@@ -148,12 +162,12 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .forEach(blockStatement -> searchBlockToSave(blockStatement, blocks));
     }
 
-    private Stream<Candidate> searchCandidates(List<StatementModel> statements) {
+    private Stream<Candidate> searchCandidates(MethodModel methodModel, List<StatementModel> statements) {
         List<Candidate> candidates = new ArrayList<>();
 
         for (int i = FIRST_INDEX; i < statements.size(); i++) {
             for (int j = i + SECOND_INDEX; j <= statements.size(); j++) {
-                Candidate candidate = buildCandidate(statements.subList(i, j));
+                Candidate candidate = buildCandidate(methodModel, statements.subList(i, j));
                 candidates.add(candidate);
             }
         }
@@ -161,161 +175,17 @@ public class ExtractMethodImpl implements ExtractMethod {
         return candidates.stream();
     }
 
-    private Candidate buildCandidate(List<StatementModel> candidateStatements) {
+    private Candidate buildCandidate(MethodModel methodModel,
+                                     List<StatementModel> candidateStatements) {
         candidateStatements = new ArrayList<>(candidateStatements);
 
         Candidate candidate = Candidate.builder()
                 .statements(candidateStatements)
                 .build();
 
-        analysisVariable(candidate);
+        candidateVariableAnalysis.analysis(methodModel, candidate);
 
         return candidate;
-    }
-
-    private void analysisVariable(@NonNull Candidate candidate) {
-        candidate.getStatements()
-                .forEach(statementModel -> analysisStatementVariable(statementModel, candidate));
-    }
-
-    private void analysisStatementVariable(StatementModel statementModel, Candidate candidate) {
-        List<String> variables = variableHelper.readVariable(statementModel.getStatement());
-        saveVariables(statementModel, variables, candidate);
-
-        if (statementModel instanceof BlockModel) {
-            analysisBlockStatementVariable(statementModel, candidate);
-        }
-    }
-
-    private void saveVariables(StatementModel statementModel, List<String> variables,
-                               Candidate candidate) {
-        SaveVariableVA saveVariableVA = SaveVariableVA.builder()
-                .statementModel(statementModel)
-                .candidate(candidate)
-                .build();
-
-        variables.stream()
-                .filter(this::isNotOperators)
-                .forEach(variable -> saveVariable(variable, saveVariableVA));
-
-        candidate.getRawVariables()
-                .add(variables);
-    }
-
-    private Boolean isNotOperators(String variable) {
-        return !variable.matches(VariableHelper.OPERATORS_CHARACTERS_REGEX);
-    }
-
-    private void saveVariable(String variable, SaveVariableVA saveVariableVA) {
-        if (isPropertyType(variable)) {
-            savePropertyType(variable, saveVariableVA);
-        } else if (checkGlobalVariable(variable)) {
-            saveGlobalVariableWithPreProcessing(variable, saveVariableVA.getCandidate());
-        } else {
-            checkVariableDomain(variable, saveVariableVA);
-        }
-    }
-
-    private Boolean isPropertyType(String variable) {
-        return VariableHelper.PRIMITIVE_TYPES.contains(variable) ||
-                variableHelper.isClassName(variable);
-    }
-
-    private void savePropertyType(String variable, SaveVariableVA saveVariableVA) {
-        VariablePropertyModel variablePropertyModel = VariablePropertyModel.variablePropertyBuilder()
-                .statementIndex(saveVariableVA.getStatementModel().getIndex())
-                .build();
-
-        variablePropertyModel.setType(variable);
-
-        saveVariableVA.getCandidate()
-                .getLocalVariables()
-                .add(variablePropertyModel);
-
-        saveVariableVA.getIsClass()
-                .set(Boolean.TRUE);
-    }
-
-    private Boolean checkGlobalVariable(String variable) {
-        return variable.startsWith(GLOBAL_VARIABLE_PREFIX);
-    }
-
-    private void saveGlobalVariableWithPreProcessing(String variable, Candidate candidate) {
-        variable = variable.replace(GLOBAL_VARIABLE_PREFIX, EMPTY_STRING);
-        saveGlobalVariable(variable, candidate);
-    }
-
-    private void saveGlobalVariable(String variable, Candidate candidate) {
-        candidate.getGlobalVariables()
-                .add(variable);
-    }
-
-    private void checkVariableDomain(String variable, SaveVariableVA saveVariableVA) {
-        if (saveVariableVA.getIsClass().get()) {
-            saveLocalVariable(variable, saveVariableVA);
-        } else {
-            checkVariable(variable, saveVariableVA.getCandidate());
-        }
-    }
-
-    private void saveLocalVariable(String variable, SaveVariableVA saveVariableVA) {
-        saveVariableVA.getCandidate()
-                .getLocalVariables()
-                .stream()
-                .filter(this::isNoNameLocalVariable)
-                .forEach(propertyModel ->
-                        saveLocalVariableName(propertyModel, variable));
-
-        saveVariableVA.getIsClass()
-                .set(Boolean.FALSE);
-    }
-
-    private Boolean isNoNameLocalVariable(PropertyModel propertyModel) {
-        return propertyModel.getName() == null;
-    }
-
-    private void saveLocalVariableName(PropertyModel propertyModel, String variable) {
-        propertyModel.setName(variable);
-    }
-
-    private void checkVariable(String variable, Candidate candidate) {
-        if (isVariableUsed(variable, candidate)) {
-            saveGlobalVariable(variable, candidate);
-        }
-    }
-
-    private Boolean isVariableUsed(String variable, Candidate candidate) {
-        return !isParameter(variable, candidate) &&
-                !isLocalVariable(variable, candidate) &&
-                !isGlobalVariable(variable, candidate);
-    }
-
-    private Boolean isParameter(String variable, Candidate candidate) {
-        return candidate.getParameters()
-                .stream()
-                .anyMatch(propertyModel -> isContainsVariable(variable, propertyModel));
-    }
-
-    private Boolean isContainsVariable(String variable, PropertyModel propertyModel) {
-        return propertyModel.getName().equals(variable);
-    }
-
-    private Boolean isLocalVariable(String variable, Candidate candidate) {
-        return candidate.getLocalVariables()
-                .stream()
-                .anyMatch(propertyModel -> isContainsVariable(variable, propertyModel));
-    }
-
-    private Boolean isGlobalVariable(String variable, Candidate candidate) {
-        String globalVariable = GLOBAL_VARIABLE_PREFIX + variable;
-
-        return candidate.getGlobalVariables().contains(variable) ||
-                candidate.getGlobalVariables().contains(globalVariable);
-    }
-
-    private void analysisBlockStatementVariable(StatementModel statementModel, Candidate candidate) {
-        ((BlockModel) statementModel).getStatements()
-                .forEach(blockStatementModel -> analysisStatementVariable(blockStatementModel, candidate));
     }
 
     private Boolean isCandidateValid(MethodModel methodModel, Candidate candidate) {
@@ -333,16 +203,21 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .filter(rawVariables -> isContainsAssignment(methodModel, candidate, rawVariables))
                 .collect(Collectors.toList());
 
-        return isNoneCandidateVariableUseInRemaining(candidate, remainingBlock) &&
-                rawVariablesContainsAssigment.isEmpty();
+        return isNoneCandidateVariableUseInRemaining(methodModel, candidate, remainingBlock) &&
+                rawVariablesContainsAssigment.isEmpty() &&
+                isBlockStatementComplete(methodBlock, candidate);
     }
 
-    private Boolean isNoneCandidateVariableUseInRemaining(Candidate candidate, BlockModel remainingBlock) {
-        Candidate remainingCandidate = buildCandidate(remainingBlock.getStatements());
-        List<StatementModel> candidateStatements = mergeAllStatements(candidate.getStatements());
+    private BlockModel getMethodBlockStatement(List<StatementModel> statements) {
+        return BlockModel.blockBuilder()
+                .statements(new ArrayList<>(statements))
+                .build();
+    }
+
+    private Boolean isNoneCandidateVariableUseInRemaining(MethodModel methodModel,
+                                                          Candidate candidate, BlockModel remainingBlock) {
         List<List<String>> filteredRemainingRawVariables = getFilteredRawVariables(
-                remainingCandidate,
-                candidateStatements.get(candidateStatements.size() - SECOND_INDEX).getIndex());
+                methodModel, candidate, remainingBlock);
 
         return filteredRemainingRawVariables.stream()
                 .flatMap(Collection::stream)
@@ -371,28 +246,61 @@ public class ExtractMethodImpl implements ExtractMethod {
         }
     }
 
-    private List<List<String>> getFilteredRawVariables(Candidate remainingCandidate, Integer indexFilter) {
+    private List<List<String>> getFilteredRawVariables(MethodModel methodModel,
+                                                       Candidate candidate, BlockModel remainingBlock) {
+        List<StatementModel> candidateStatements = mergeAllStatements(candidate.getStatements());
         List<List<String>> filteredRawVariables = new ArrayList<>();
-        List<StatementModel> remainingStatements = mergeAllStatements(remainingCandidate.getStatements());
-        analysisVariable(remainingCandidate);
 
-        Integer maxIndexFilter = searchMaxIndexFilter(remainingStatements, indexFilter);
+        Integer indexFilter = candidateStatements.get(candidateStatements.size() - SECOND_INDEX).getIndex();
 
-        for (int index = FIRST_INDEX; index < remainingStatements.size(); index++) {
-            StatementModel statementModel = remainingStatements.get(index);
+        if (isCandidateIsMultiBlock(candidateStatements)) {
+            GetFilteredRawVariablesVA getFilteredRawVariablesVA = GetFilteredRawVariablesVA.builder()
+                    .methodModel(methodModel)
+                    .remainingBlock(remainingBlock)
+                    .indexFilter(indexFilter)
+                    .filteredRawVariables(filteredRawVariables)
+                    .build();
 
-            if (statementModel.getIndex() > indexFilter && statementModel.getIndex() < maxIndexFilter) {
-                filteredRawVariables.add(remainingCandidate.getRawVariables().get(index));
-            }
+            doGetFilteredRawVariables(getFilteredRawVariablesVA);
         }
 
         return filteredRawVariables;
     }
 
-    private Integer searchMaxIndexFilter(List<StatementModel> remainingStatements, Integer indexFilter) {
-        AtomicInteger maxIndexFilter = new AtomicInteger(remainingStatements.size());
+    private Boolean isCandidateIsMultiBlock(List<StatementModel> candidateStatements) {
+        if (candidateStatements.get(FIRST_INDEX) instanceof BlockModel) {
+            return !((BlockModel) candidateStatements.get(FIRST_INDEX)).getEndOfBlockStatement()
+                    .getIndex()
+                    .equals(candidateStatements.get(candidateStatements.size() - SECOND_INDEX)
+                            .getIndex() + SECOND_INDEX);
+        } else {
+            return Boolean.TRUE;
+        }
+    }
 
-        if (maxIndexFilter.get() > EMPTY_SIZE) {
+    private void doGetFilteredRawVariables(GetFilteredRawVariablesVA getFilteredRawVariablesVA) {
+        Candidate remainingCandidate = buildCandidate(getFilteredRawVariablesVA.getMethodModel(),
+                getFilteredRawVariablesVA.getRemainingBlock().getStatements());
+        List<StatementModel> remainingStatements = mergeAllStatements(remainingCandidate.getStatements());
+        candidateVariableAnalysis.analysis(getFilteredRawVariablesVA.getMethodModel(), remainingCandidate);
+
+        Integer maxIndexFilter = searchMaxIndexFilter(remainingStatements,
+                getFilteredRawVariablesVA.getIndexFilter());
+
+        for (int index = FIRST_INDEX; index < remainingStatements.size(); index++) {
+            StatementModel statementModel = remainingStatements.get(index);
+
+            if (isSearchInRange(statementModel, maxIndexFilter, getFilteredRawVariablesVA)) {
+                getFilteredRawVariablesVA.getFilteredRawVariables()
+                        .add(remainingCandidate.getRawVariables().get(index));
+            }
+        }
+    }
+
+    private Integer searchMaxIndexFilter(List<StatementModel> remainingStatements, Integer indexFilter) {
+        AtomicInteger maxIndexFilter = new AtomicInteger();
+
+        if (!remainingStatements.isEmpty()) {
             doSearchMaxIndexFilter(remainingStatements, maxIndexFilter, indexFilter);
         }
 
@@ -403,21 +311,91 @@ public class ExtractMethodImpl implements ExtractMethod {
                                         AtomicInteger maxIndexFilter, Integer indexFilter) {
         StatementModel lastStatementModel = searchStatementByIndex(remainingStatements,
                 indexFilter + SECOND_INDEX);
-        Integer firstIndex = remainingStatements.indexOf(lastStatementModel);
+        Integer firstIndex = searchIndexOfStatements(remainingStatements, lastStatementModel);
+        maxIndexFilter.set(remainingStatements.get(remainingStatements.size() - SECOND_INDEX)
+                .getIndex());
 
         for (int index = firstIndex; index >= FIRST_INDEX; index--) {
             StatementModel statementModel = remainingStatements.get(index);
 
             if (isInsideBlock(statementModel, indexFilter)) {
-                maxIndexFilter.set(index);
+                maxIndexFilter.set(((BlockModel) statementModel).getEndOfBlockStatement().getIndex());
                 break;
             }
         }
     }
 
+    private StatementModel searchStatementByIndex(List<StatementModel> statements, Integer index) {
+        StatementModel statementModel = StatementModel.statementBuilder().build();
+        findStatementByIndex(statements, statementModel, index);
+
+        return statementModel;
+    }
+
+    private void findStatementByIndex(List<StatementModel> statements,
+                                      StatementModel statementModel, Integer indexToFind) {
+        for (int index = FIRST_INDEX; index < statements.size(); index++) {
+            if (statementModel.getIndex() != null) {
+                break;
+            }
+
+            checkStatementIndex(statements.get(index), statementModel, indexToFind);
+        }
+    }
+
+    private void checkStatementIndex(StatementModel statementModel,
+                                     StatementModel tempStatementModel, Integer indexToFind) {
+        if (statementModel.getIndex().equals(indexToFind)) {
+            copyStatementModel(statementModel, tempStatementModel);
+            return;
+        }
+
+        if (statementModel instanceof BlockModel) {
+            findStatementByIndex(((BlockModel) statementModel).getStatements(),
+                    tempStatementModel, indexToFind);
+        }
+    }
+
+    private void copyStatementModel(StatementModel statementModel, StatementModel tempStatementModel) {
+        tempStatementModel.setIndex(statementModel.getIndex());
+        tempStatementModel.setStatement(statementModel.getStatement());
+        tempStatementModel.setStartIndex(statementModel.getStartIndex());
+        tempStatementModel.setEndIndex(statementModel.getEndIndex());
+    }
+
+    private Integer searchIndexOfStatements(List<StatementModel> remainingStatements,
+                                            StatementModel statementModel) {
+        Integer index = INVALID_INDEX;
+
+        for (int i = FIRST_INDEX; i < remainingStatements.size(); i++) {
+            StatementModel remainingStatementModel = remainingStatements.get(i);
+
+            if (isStatementEquals(remainingStatementModel, statementModel)) {
+                index = i;
+                break;
+            }
+        }
+
+        return index;
+    }
+
+    private Boolean isStatementEquals(StatementModel statementModel,
+                                      StatementModel nextStatementModel) {
+        return statementModel.getIndex().equals(nextStatementModel.getIndex()) &&
+                statementModel.getStatement().equals(nextStatementModel.getStatement()) &&
+                statementModel.getStartIndex().equals(nextStatementModel.getStartIndex()) &&
+                statementModel.getEndIndex().equals(nextStatementModel.getEndIndex());
+    }
+
     private Boolean isInsideBlock(StatementModel statementModel, Integer indexFilter) {
         return statementModel instanceof BlockModel &&
                 ((BlockModel) statementModel).getEndOfBlockStatement().getIndex() > indexFilter;
+    }
+
+    private Boolean isSearchInRange(StatementModel statementModel, Integer maxIndexFilter,
+                                    GetFilteredRawVariablesVA getFilteredRawVariablesVA) {
+        return statementModel.getIndex() > getFilteredRawVariablesVA.getIndexFilter() &&
+                statementModel.getIndex() <= maxIndexFilter;
     }
 
     private Boolean isContainsAssignment(MethodModel methodModel, Candidate candidate,
@@ -474,12 +452,6 @@ public class ExtractMethodImpl implements ExtractMethod {
         readBlockStatementIndex(candidateBlock, readStatementIndexVA);
 
         return readStatementIndexVA.getRealStatementIndex();
-    }
-
-    private BlockModel getMethodBlockStatement(List<StatementModel> statements) {
-        return BlockModel.blockBuilder()
-                .statements(new ArrayList<>(statements))
-                .build();
     }
 
     private void readBlockStatementIndex(BlockModel blockModel,
@@ -561,6 +533,10 @@ public class ExtractMethodImpl implements ExtractMethod {
         return nextVariable;
     }
 
+    private Boolean isNotOperators(String variable) {
+        return !variable.matches(VariableHelper.OPERATORS_CHARACTERS_REGEX);
+    }
+
     private Integer getNextIndex(List<String> rawVariables, Integer index) {
         Integer nextIndex = index + SECOND_INDEX;
         Integer maxIndex = rawVariables.size() - SECOND_INDEX;
@@ -578,6 +554,156 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private Boolean containsIncrementOrDecrement(String variable) {
         return variable.equals(INCREMENT_OPERATOR) || variable.equals(DECREMENT_OPERATOR);
+    }
+
+    private Boolean isBlockStatementComplete(BlockModel methodBlock, Candidate candidate) {
+        List<StatementModel> candidateStatements = candidate.getStatements();
+        IsBlockCompleteVA isBlockCompleteVA = IsBlockCompleteVA.builder()
+                .statements(candidateStatements)
+                .methodBlock(methodBlock)
+                .isBlockComplete(new AtomicBoolean(Boolean.TRUE))
+                .build();
+
+        isBlockComplete(isBlockCompleteVA);
+
+        return isBlockCompleteVA.getIsBlockComplete().get();
+    }
+
+    private void isBlockComplete(IsBlockCompleteVA isBlockCompleteVA) {
+        List<StatementModel> candidateStatements = isBlockCompleteVA.getStatements();
+
+        for (int index = FIRST_INDEX; index < candidateStatements.size(); index++) {
+            if (!isBlockCompleteVA.getIsBlockComplete().get()) {
+                break;
+            }
+
+            doIsBlockComplete(candidateStatements, index, isBlockCompleteVA);
+        }
+    }
+
+    private void doIsBlockComplete(List<StatementModel> candidateStatements,
+                                   Integer index, IsBlockCompleteVA isBlockCompleteVA) {
+        StatementModel beforeStatementModel = getStatementModel(candidateStatements, index - SECOND_INDEX);
+        StatementModel statementModel = getStatementModel(candidateStatements, index);
+        StatementModel nextStatementModel = getStatementModel(candidateStatements, index + SECOND_INDEX);
+
+        isBlockCompleteVA.setBeforeStatementModel(beforeStatementModel);
+        isBlockCompleteVA.setStatementModel(statementModel);
+        isBlockCompleteVA.setNextStatementModel(nextStatementModel);
+        checkBlockCompletion(isBlockCompleteVA);
+    }
+
+    private StatementModel getStatementModel(List<StatementModel> candidateStatements,
+                                             Integer index) {
+        try {
+            return candidateStatements.get(index);
+        } catch (IndexOutOfBoundsException e) {
+            return null;
+        }
+    }
+
+    private void checkBlockCompletion(IsBlockCompleteVA isBlockCompleteVA) {
+        StatementModel statementModel = isBlockCompleteVA.getStatementModel();
+
+        if (statementModel instanceof BlockModel) {
+            if (isBlockNotComplete(statementModel, isBlockCompleteVA)) {
+                flagCandidateToFalse(isBlockCompleteVA);
+            }
+
+            isBlockCompleteVA.setStatements(((BlockModel) statementModel).getStatements());
+            isBlockComplete(isBlockCompleteVA);
+        } else if (isDoWhileNeedOpeningStatement(statementModel, isBlockCompleteVA)) {
+            flagCandidateToFalse(isBlockCompleteVA);
+        }
+    }
+
+    private Boolean isBlockNotComplete(StatementModel statementModel,
+                                       IsBlockCompleteVA isBlockCompleteVA) {
+        return isBlockNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
+                isBlockNeedClosingStatement(statementModel, isBlockCompleteVA) ||
+                isIfMissElseBlock(statementModel, isBlockCompleteVA);
+    }
+
+    private Boolean isBlockNeedOpeningStatement(StatementModel statementModel,
+                                                IsBlockCompleteVA isBlockCompleteVA) {
+        return (statementModel.getStatement().startsWith(CATCH) || statementModel.getStatement().startsWith(FINALLY) ||
+                statementModel.getStatement().startsWith(ELSE)) &&
+                isBlockCompleteVA.getBeforeStatementModel() == null;
+    }
+
+    private Boolean isBlockNeedClosingStatement(StatementModel statementModel,
+                                                IsBlockCompleteVA isBlockCompleteVA) {
+        return (statementModel.getStatement().startsWith(TRY) || statementModel.getStatement().startsWith(DO)) &&
+                isBlockCompleteVA.getNextStatementModel() == null;
+    }
+
+    private Boolean isIfMissElseBlock(StatementModel statementModel,
+                                      IsBlockCompleteVA isBlockCompleteVA) {
+        IsIfMissElseVA isIfMissElseVA = IsIfMissElseVA.builder()
+                .statements(isBlockCompleteVA.getMethodBlock().getStatements())
+                .ifStatementModel(statementModel)
+                .nextIfStatementModel(isBlockCompleteVA.getNextStatementModel())
+                .isIfMissElseBlock(new AtomicBoolean(Boolean.FALSE))
+                .build();
+
+        if (statementModel.getStatement().startsWith(IF)) {
+            searchIfStatementLocation(isIfMissElseVA);
+        }
+
+        return isIfMissElseVA.getIsIfMissElseBlock().get();
+    }
+
+    private void searchIfStatementLocation(IsIfMissElseVA isIfMissElseVA) {
+        List<StatementModel> statements = isIfMissElseVA.getStatements();
+
+        if (statements.contains(isIfMissElseVA.getIfStatementModel())) {
+            checkIfStatementElse(statements, isIfMissElseVA);
+        } else {
+            statements.forEach(statementModel ->
+                    checkIfStatementLocation(statementModel, isIfMissElseVA));
+        }
+    }
+
+    private void checkIfStatementElse(List<StatementModel> statements,
+                                      IsIfMissElseVA isIfMissElseVA) {
+        Integer indexOfIfStatement = statements.indexOf(isIfMissElseVA.getIfStatementModel());
+        StatementModel nextStatementModel = getStatementModel(statements, indexOfIfStatement + SECOND_INDEX);
+
+        if (isIfNeedChecked(nextStatementModel, isIfMissElseVA)) {
+            isIfMissElseVA.getIsIfMissElseBlock()
+                    .set(Boolean.TRUE);
+        }
+    }
+
+    private Boolean isIfNeedChecked(StatementModel nextStatementModel, IsIfMissElseVA isIfMissElseVA) {
+        return isIfMissElseVA.getNextIfStatementModel() == null &&
+                nextStatementModel instanceof BlockModel &&
+                nextStatementModel.getStatement().startsWith(ELSE);
+    }
+
+    private void checkIfStatementLocation(StatementModel statementModel,
+                                          IsIfMissElseVA isIfMissElseVA) {
+        if (isNeedToCheckInsideBlock(statementModel, isIfMissElseVA)) {
+            isIfMissElseVA.setStatements(((BlockModel) statementModel).getStatements());
+            searchIfStatementLocation(isIfMissElseVA);
+        }
+    }
+
+    private Boolean isNeedToCheckInsideBlock(StatementModel statementModel,
+                                             IsIfMissElseVA isIfMissElseVA) {
+        return statementModel instanceof BlockModel &&
+                !isIfMissElseVA.getIsIfMissElseBlock().get();
+    }
+
+    private void flagCandidateToFalse(IsBlockCompleteVA isBlockCompleteVA) {
+        isBlockCompleteVA.getIsBlockComplete()
+                .set(Boolean.FALSE);
+    }
+
+    private Boolean isDoWhileNeedOpeningStatement(StatementModel statementModel,
+                                                  IsBlockCompleteVA isBlockCompleteVA) {
+        return statementModel.getStatement().startsWith(WHILE) &&
+                isBlockCompleteVA.getBeforeStatementModel() == null;
     }
 
     private Boolean isQualityValid(MethodModel methodModel, Candidate candidate) {
@@ -787,13 +913,13 @@ public class ExtractMethodImpl implements ExtractMethod {
     }
 
     private List<PropertyModel> getCandidateParameters(MethodModel methodModel, Candidate candidate) {
-        Stream<PropertyModel> parametersFromLocalVariable = getParameterCandidates(
-                methodModel.getLocalVariables(), candidate.getGlobalVariables());
-
         Stream<PropertyModel> parametersFromMethodParameters = getParameterCandidates(
                 methodModel.getParameters(), candidate.getGlobalVariables());
 
-        return Stream.concat(parametersFromLocalVariable, parametersFromMethodParameters)
+        Stream<PropertyModel> parametersFromLocalVariable = getParameterCandidates(
+                methodModel.getLocalVariables(), candidate.getGlobalVariables());
+
+        return Stream.concat(parametersFromMethodParameters, parametersFromLocalVariable)
                 .collect(Collectors.toList());
     }
 
@@ -825,6 +951,70 @@ public class ExtractMethodImpl implements ExtractMethod {
                 candidate.getNestingAreaScore() + candidate.getParameterScore());
     }
 
+    private void pruningCandidates(List<Candidate> candidates) {
+        List<Integer> indexToRemoves = new ArrayList<>();
+
+        for (int index = FIRST_INDEX; index < candidates.size(); index++) {
+            searchCandidatesThatContainsCandidate(index, candidates, indexToRemoves);
+        }
+
+        removeCandidates(indexToRemoves, candidates);
+    }
+
+    private void searchCandidatesThatContainsCandidate(Integer index, List<Candidate> candidates,
+                                                       List<Integer> indexToRemoves) {
+        for (int nextIndex = FIRST_INDEX; nextIndex < candidates.size(); nextIndex++) {
+            Candidate candidate = candidates.get(nextIndex);
+            Candidate candidateToSearch = candidates.get(index);
+
+            if (index.equals(nextIndex)) {
+                continue;
+            }
+
+            if (isContainsCandidate(candidate, candidateToSearch)) {
+                indexToRemoves.add(index);
+                break;
+            }
+        }
+    }
+
+    private Boolean isContainsCandidate(Candidate candidate, Candidate candidateToSearch) {
+        AtomicBoolean isContains = new AtomicBoolean();
+        searchCandidates(candidate.getStatements(), candidateToSearch.getStatements(), isContains);
+
+        return isContains.get();
+    }
+
+    private void searchCandidates(List<StatementModel> statements,
+                                  List<StatementModel> statementsToSearch,
+                                  AtomicBoolean isContains) {
+        if (statements.containsAll(statementsToSearch)) {
+            isContains.set(!isContains.get());
+        } else {
+            statements.forEach(statementModel ->
+                    searchBlockCandidates(statementModel, statementsToSearch, isContains));
+        }
+    }
+
+    private void searchBlockCandidates(StatementModel statementModel,
+                                       List<StatementModel> statementsToSearch,
+                                       AtomicBoolean isContains) {
+        if (statementModel instanceof BlockModel) {
+            searchCandidates(((BlockModel) statementModel).getStatements(), statementsToSearch,
+                    isContains);
+        }
+    }
+
+    private void removeCandidates(List<Integer> indexToRemoves,
+                                  List<Candidate> candidates) {
+        Integer firstIndex = indexToRemoves.size() - SECOND_INDEX;
+
+        for (int index = firstIndex; index >= FIRST_INDEX; index--) {
+            Integer indexToRemove = indexToRemoves.get(index);
+            candidates.remove(indexToRemove.intValue());
+        }
+    }
+
     private void sortingCandidates(List<Candidate> candidates) {
         candidates.sort(Comparator.comparing(Candidate::getTotalScore)
                 .reversed());
@@ -835,7 +1025,7 @@ public class ExtractMethodImpl implements ExtractMethod {
         String extractedMethodName = methodModel.getName() + EXTRACTED_METHOD_NAME_SUFFIX;
 
         return MethodModel.builder()
-                .keywords(Collections.singletonList(EXTRACTED_METHOD_KEYWORD))
+                .keywords(createKeywords(methodModel.getKeywords()))
                 .returnType(createReturnType(candidate))
                 .name(extractedMethodName)
                 .parameters(candidate.getParameters())
@@ -845,6 +1035,19 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .body(createMethodBody(candidate.getStatements()))
                 .statements(candidate.getStatements())
                 .build();
+    }
+
+    private List<String> createKeywords(List<String> methodKeywords) {
+        List<String> keywords = methodKeywords.stream()
+                .filter(this::isNotAnnotationAndModifier)
+                .collect(Collectors.toList());
+        keywords.add(FIRST_INDEX, METHOD_PRIVATE_MODIFIER);
+
+        return keywords;
+    }
+
+    private Boolean isNotAnnotationAndModifier(String keywords) {
+        return !keywords.startsWith(AT) && !REMOVED_MODIFIERS.contains(keywords);
     }
 
     private String createReturnType(Candidate candidate) {
@@ -919,84 +1122,59 @@ public class ExtractMethodImpl implements ExtractMethod {
     }
 
     private List<String> createExceptions(MethodModel methodModel, Candidate candidate) {
-        List<String> exceptions = new ArrayList<>(methodModel.getExceptions());
         Integer firstCandidateStatementIndex = candidate.getStatements()
                 .get(FIRST_INDEX)
                 .getIndex();
-        Integer statementIndex = firstCandidateStatementIndex - SECOND_INDEX;
-        StatementModel statementModel = searchStatementByIndex(methodModel.getStatements(), statementIndex);
+        List<StatementModel> methodStatements = mergeAllStatements(methodModel.getStatements());
+        StatementModel statementModel = searchStatementByIndex(
+                methodModel.getStatements(), firstCandidateStatementIndex);
 
-        searchException(methodModel, statementModel, exceptions);
+        return searchException(methodStatements, methodModel, statementModel);
+    }
+
+    private List<String> searchException(List<StatementModel> methodStatements,
+                                         MethodModel methodModel, StatementModel statementModel) {
+        List<String> exceptions = new ArrayList<>(methodModel.getExceptions());
+        Integer statementIndex = searchIndexOfStatements(methodStatements, statementModel);
+
+        for (int index = statementIndex; index >= FIRST_INDEX; index--) {
+            StatementModel methodStatementModel = methodStatements.get(index);
+
+            if (checkContainCatchBlock(methodModel, methodStatementModel, exceptions)) {
+                break;
+            }
+        }
 
         return exceptions.stream()
                 .distinct()
                 .collect(Collectors.toList());
     }
 
-    private StatementModel searchStatementByIndex(List<StatementModel> statements, Integer index) {
-        StatementModel statementModel = StatementModel.statementBuilder().build();
-        findStatementByIndex(statements, statementModel, index);
+    private Boolean checkContainCatchBlock(MethodModel methodModel, StatementModel statementModel,
+                                           List<String> exceptions) {
+        if (statementModel instanceof BlockModel) {
+            StatementModel endBlockStatement = searchStatementByIndex(methodModel.getStatements(),
+                    ((BlockModel) statementModel).getEndOfBlockStatement().getIndex());
+            Boolean isCatch = endBlockStatement.getStatement().startsWith(CATCH);
 
-        return statementModel;
-    }
-
-    private void findStatementByIndex(List<StatementModel> statements,
-                                      StatementModel statementModel, Integer indexToFind) {
-        for (int index = FIRST_INDEX; index < statements.size(); index++) {
-            if (statementModel.getIndex() != null) {
-                break;
+            if (isCatch) {
+                saveException(methodModel, endBlockStatement, exceptions);
             }
 
-            checkStatementIndex(statements.get(index), statementModel, indexToFind);
-        }
-    }
-
-    private void checkStatementIndex(StatementModel statementModel,
-                                     StatementModel tempStatementModel, Integer indexToFind) {
-        if (statementModel.getIndex().equals(indexToFind)) {
-            copyStatementModel(statementModel, tempStatementModel);
-            return;
-        }
-
-        if (statementModel instanceof BlockModel) {
-            findStatementByIndex(((BlockModel) statementModel).getStatements(),
-                    tempStatementModel, indexToFind);
-        }
-    }
-
-    private void copyStatementModel(StatementModel statementModel, StatementModel tempStatementModel) {
-        tempStatementModel.setIndex(statementModel.getIndex());
-        tempStatementModel.setStatement(statementModel.getStatement());
-        tempStatementModel.setStartIndex(statementModel.getStartIndex());
-        tempStatementModel.setEndIndex(statementModel.getEndIndex());
-    }
-
-    private void searchException(MethodModel methodModel, StatementModel statementModel,
-                                 List<String> exceptions) {
-        if (isTryCatchBlock(statementModel)) {
-            methodModel.getLocalVariables()
-                    .stream()
-                    .filter(variablePropertyModel ->
-                            variablePropertyModel.getStatementIndex().equals(statementModel.getIndex()))
-                    .forEach(variablePropertyModel ->
-                            exceptions.add(variablePropertyModel.getType()));
-        }
-    }
-
-    private Boolean isTryCatchBlock(StatementModel statementModel) {
-        if (statementModel instanceof BlockModel) {
-            return isContainCatchBlock((BlockModel) statementModel);
+            return isCatch;
         } else {
             return Boolean.FALSE;
         }
     }
 
-    private Boolean isContainCatchBlock(BlockModel blockModel) {
-        String statement = blockModel.getEndOfBlockStatement().getStatement();
-        Pattern pattern = Pattern.compile(Pattern.quote(CATCH_BLOCK_REGEX));
-        Matcher matcher = pattern.matcher(statement);
-
-        return matcher.find();
+    private void saveException(MethodModel methodModel, StatementModel endBlockStatement,
+                               List<String> exceptions) {
+        methodModel.getLocalVariables()
+                .stream()
+                .filter(variablePropertyModel ->
+                        variablePropertyModel.getStatementIndex().equals(endBlockStatement.getIndex()))
+                .forEach(variablePropertyModel ->
+                        exceptions.add(variablePropertyModel.getType()));
     }
 
     private MethodModel createRemainingMethodModel(MethodModel methodModel,
@@ -1020,67 +1198,77 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private void addCallExtractedMethodStatement(List<StatementModel> statements,
                                                  MethodModel extractedMethodModel) {
-        statements.forEach(statementModel ->
-                checkStatementModel(statementModel, extractedMethodModel));
+        Integer extractedStatementIndex = extractedMethodModel.getStatements()
+                .get(FIRST_INDEX)
+                .getIndex();
 
-        writeCallExtractedMethodStatement(statements, statements.get(FIRST_INDEX), extractedMethodModel);
+        AddCallExtractedMethodVA addCallExtractedMethodVA = AddCallExtractedMethodVA.builder()
+                .statements(statements)
+                .extractedMethodModel(extractedMethodModel)
+                .extractedStatementIndex(extractedStatementIndex)
+                .extractedStatements(statements)
+                .statementArrayIndex(INVALID_INDEX)
+                .build();
+
+        if (extractedStatementIndex > FIRST_INDEX) {
+            addCallExtractedMethodVA.setExtractedStatementIndex(extractedStatementIndex - SECOND_INDEX);
+            doAddCallExtractedMethodStatement(addCallExtractedMethodVA);
+        }
+
+        writeCallExtractedMethodStatement(addCallExtractedMethodVA);
     }
 
-    private void checkStatementModel(StatementModel statementModel,
-                                     MethodModel extractedMethodModel) {
+    private void doAddCallExtractedMethodStatement(AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        List<StatementModel> statements = addCallExtractedMethodVA.getStatements();
+
+        for (int index = FIRST_INDEX; index < statements.size(); index++) {
+            checkStatementModel(index, statements, addCallExtractedMethodVA);
+        }
+    }
+
+    private void checkStatementModel(Integer index, List<StatementModel> statements,
+                                     AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        StatementModel statementModel = statements.get(index);
+
+        if (addCallExtractedMethodVA.getExtractedStatementIndex()
+                .equals(statementModel.getIndex())) {
+            addCallExtractedMethodVA.setExtractedStatements(statements);
+            addCallExtractedMethodVA.setStatementArrayIndex(index);
+        }
+
         if (statementModel instanceof BlockModel) {
-            BlockModel blockModel = (BlockModel) statementModel;
-
-            writeCallExtractedMethodBlockStatement(blockModel, extractedMethodModel);
-            addCallExtractedMethodStatement(blockModel.getStatements(), extractedMethodModel);
+            addCallExtractedMethodVA.setStatements(((BlockModel) statementModel).getStatements());
+            doAddCallExtractedMethodStatement(addCallExtractedMethodVA);
         }
     }
 
-    private void writeCallExtractedMethodBlockStatement(BlockModel blockModel,
-                                                        MethodModel extractedMethodModel) {
-        Integer firstExtractedStatementIndex = extractedMethodModel.getStatements()
-                .get(FIRST_INDEX)
-                .getIndex();
+    private void writeCallExtractedMethodStatement(AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        Integer callExtractedMethodIndex = addCallExtractedMethodVA.getStatementArrayIndex() + SECOND_INDEX;
+        StatementModel statementModel = null;
+        StatementModel callExtractedMethodStatementModel = createCallExtractedMethodStatement(
+                addCallExtractedMethodVA);
 
-        if (isNeedWriteCallExtractedMethodStatement(blockModel, firstExtractedStatementIndex)) {
-            StatementModel statementModel = createCallExtractedMethodStatement(
-                    extractedMethodModel, firstExtractedStatementIndex);
-            blockModel.getStatements().add(FIRST_INDEX, statementModel);
+        if (!callExtractedMethodIndex.equals(FIRST_INDEX)) {
+            statementModel = addCallExtractedMethodVA.getExtractedStatements()
+                    .get(addCallExtractedMethodVA.getStatementArrayIndex());
+        }
+
+        if (statementModel instanceof BlockModel) {
+            ((BlockModel) statementModel).getStatements()
+                    .add(callExtractedMethodStatementModel);
+        } else {
+            addCallExtractedMethodVA.getExtractedStatements()
+                    .add(callExtractedMethodIndex, callExtractedMethodStatementModel);
         }
     }
 
-    private Boolean isNeedWriteCallExtractedMethodStatement(StatementModel statementModel,
-                                                            Integer firstExtractedStatementIndex) {
-        return statementModel.getIndex().equals(firstExtractedStatementIndex - SECOND_INDEX);
-    }
-
-    private void writeCallExtractedMethodStatement(List<StatementModel> statements,
-                                                   StatementModel statementModel,
-                                                   MethodModel extractedMethodModel) {
-        Integer firstExtractedStatementIndex = extractedMethodModel.getStatements()
-                .get(FIRST_INDEX)
-                .getIndex();
-
-        if (isWriteOnMethodStatement(statementModel, firstExtractedStatementIndex)) {
-            StatementModel newStatementModel = createCallExtractedMethodStatement(
-                    extractedMethodModel, firstExtractedStatementIndex);
-            statements.add(newStatementModel);
-        }
-    }
-
-    private Boolean isWriteOnMethodStatement(StatementModel statementModel,
-                                             Integer firstExtractedStatementIndex) {
-        return !(statementModel instanceof BlockModel) &&
-                isNeedWriteCallExtractedMethodStatement(statementModel, firstExtractedStatementIndex);
-    }
-
-    private StatementModel createCallExtractedMethodStatement(MethodModel extractedMethodModel,
-                                                              Integer firstExtractedStatementIndex) {
-        String statement = extractedMethodModel.getName() +
-                createMethodCallParameters(extractedMethodModel.getParameters());
+    private StatementModel createCallExtractedMethodStatement(AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        String statement = addCallExtractedMethodVA.getExtractedMethodModel().getName() +
+                createMethodCallParameters(addCallExtractedMethodVA.getExtractedMethodModel()
+                        .getParameters());
 
         return StatementModel.statementBuilder()
-                .index(firstExtractedStatementIndex)
+                .index(addCallExtractedMethodVA.getExtractedStatementIndex())
                 .statement(statement)
                 .build();
     }
