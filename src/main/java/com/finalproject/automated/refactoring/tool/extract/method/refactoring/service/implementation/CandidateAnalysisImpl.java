@@ -197,9 +197,6 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
         Integer maxIndexFilter = searchMaxIndexFilter(remainingStatements,
                 getFilteredRawVariablesVA.getIndexFilter());
 
-        System.out.println(remainingCandidate);
-        System.out.println();
-
         candidateVariableAnalysis.analysis(getFilteredRawVariablesVA.getMethodModel(), remainingCandidate);
 
         for (int index = FIRST_INDEX; index < remainingStatements.size(); index++) {
