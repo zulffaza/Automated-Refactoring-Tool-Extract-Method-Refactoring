@@ -4,6 +4,7 @@ import com.finalproject.automated.refactoring.tool.extract.method.refactoring.mo
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateVariableAnalysis;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
+import com.finalproject.automated.refactoring.tool.model.PropertyModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
 import com.finalproject.automated.refactoring.tool.utils.service.VariableHelper;
@@ -46,6 +47,7 @@ public class CandidateVariableAnalysisImplTest {
     private static final String SECOND_BLOCK_STATEMENT = "return e;";
     private static final String SECOND_BLOCK_END_STATEMENT = "}";
     private static final String FIRST_READ_VARIABLE = "user";
+    private static final String FIRST_READ_VARIABLE_TYPE = "String";
     private static final String SECOND_READ_VARIABLE_CLEAN = "name";
     private static final String SECOND_READ_VARIABLE = "this." + SECOND_READ_VARIABLE_CLEAN;
     private static final String THIRD_READ_VARIABLE = "extension";
@@ -61,6 +63,10 @@ public class CandidateVariableAnalysisImplTest {
     @Before
     public void setUp() {
         methodModel = MethodModel.builder()
+                .parameters(Collections.singletonList(PropertyModel.builder()
+                        .type(FIRST_READ_VARIABLE_TYPE)
+                        .name(FIRST_READ_VARIABLE)
+                        .build()))
                 .build();
         candidate = Candidate.builder()
                 .statements(createExpectedStatements())
