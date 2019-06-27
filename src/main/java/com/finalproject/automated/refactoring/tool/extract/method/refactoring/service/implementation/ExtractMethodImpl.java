@@ -72,8 +72,6 @@ public class ExtractMethodImpl implements ExtractMethod {
         try {
             return doRefactoring(path, methodModel);
         } catch (Exception e) {
-            e.printStackTrace();
-
             return Boolean.FALSE;
         }
     }
