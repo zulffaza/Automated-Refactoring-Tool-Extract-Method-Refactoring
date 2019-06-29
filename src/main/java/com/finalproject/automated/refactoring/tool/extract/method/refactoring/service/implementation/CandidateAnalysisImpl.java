@@ -25,8 +25,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -392,7 +390,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     }
 
     private Boolean isNotOperators(String variable) {
-        return !isMatchRegex(variable, VariableHelper.OPERATORS_CHARACTERS_REGEX);
+        return !CandidateHelper.isMatchRegex(variable, VariableHelper.OPERATORS_CHARACTERS_REGEX);
     }
 
     private Integer getNextIndex(List<String> rawVariables, Integer index) {
@@ -484,23 +482,16 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private Boolean isBlockNeedOpeningStatement(StatementModel statementModel,
                                                 IsBlockCompleteVA isBlockCompleteVA) {
-        return (isMatchRegex(statementModel.getStatement(), CATCH_REGEX) ||
-                isMatchRegex(statementModel.getStatement(), FINALLY_REGEX) ||
-                isMatchRegex(statementModel.getStatement(), ELSE_REGEX)) &&
+        return (CandidateHelper.isMatchRegex(statementModel.getStatement(), CATCH_REGEX) ||
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), FINALLY_REGEX) ||
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), ELSE_REGEX)) &&
                 isBlockCompleteVA.getBeforeStatementModel() == null;
-    }
-
-    private Boolean isMatchRegex(String statement, String regex) {
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(statement);
-
-        return matcher.find();
     }
 
     private Boolean isBlockNeedClosingStatement(StatementModel statementModel,
                                                 IsBlockCompleteVA isBlockCompleteVA) {
-        return (isMatchRegex(statementModel.getStatement(), TRY_REGEX) ||
-                isMatchRegex(statementModel.getStatement(), DO_REGEX)) &&
+        return (CandidateHelper.isMatchRegex(statementModel.getStatement(), TRY_REGEX) ||
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), DO_REGEX)) &&
                 isBlockCompleteVA.getNextStatementModel() == null;
     }
 
@@ -513,7 +504,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                 .isIfMissElseBlock(new AtomicBoolean(Boolean.FALSE))
                 .build();
 
-        if (isMatchRegex(statementModel.getStatement(), IF_REGEX)) {
+        if (CandidateHelper.isMatchRegex(statementModel.getStatement(), IF_REGEX)) {
             searchIfStatementLocation(isIfMissElseVA);
         }
 
@@ -545,7 +536,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private Boolean isIfNeedChecked(StatementModel nextStatementModel, IsIfMissElseVA isIfMissElseVA) {
         return isIfMissElseVA.getNextIfStatementModel() == null &&
                 nextStatementModel instanceof BlockModel &&
-                isMatchRegex(nextStatementModel.getStatement(), ELSE_REGEX);
+                CandidateHelper.isMatchRegex(nextStatementModel.getStatement(), ELSE_REGEX);
     }
 
     private void checkIfStatementLocation(StatementModel statementModel,
@@ -570,20 +561,13 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private Boolean isAbnormalBlock(StatementModel statementModel,
                                     IsBlockCompleteVA isBlockCompleteVA) {
         return isDoWhileNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
-                isContainReturnStatement(statementModel);
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), RETURN_REGEX);
     }
 
     private Boolean isDoWhileNeedOpeningStatement(StatementModel statementModel,
                                                   IsBlockCompleteVA isBlockCompleteVA) {
-        return isMatchRegex(statementModel.getStatement(), WHILE_REGEX) &&
+        return CandidateHelper.isMatchRegex(statementModel.getStatement(), WHILE_REGEX) &&
                 isBlockCompleteVA.getBeforeStatementModel() == null;
-    }
-
-    private Boolean isContainReturnStatement(StatementModel statementModel) {
-        Pattern pattern = Pattern.compile(RETURN_REGEX);
-        Matcher matcher = pattern.matcher(statementModel.getStatement());
-
-        return matcher.find();
     }
 
     private Boolean isQualityValid(MethodModel methodModel, Candidate candidate) {

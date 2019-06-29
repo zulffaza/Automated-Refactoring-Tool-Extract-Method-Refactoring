@@ -3,6 +3,7 @@ package com.finalproject.automated.refactoring.tool.extract.method.refactoring.s
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
+import com.finalproject.automated.refactoring.tool.utils.service.VariableHelper;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -203,6 +204,30 @@ public class CandidateHelperTest {
     public void searchIndexOfStatements_failed_statementIsNull() {
         List<StatementModel> statements = createParentBlockStatement().getStatements();
         CandidateHelper.searchIndexOfStatements(statements, null);
+    }
+
+    @Test
+    public void isMatchRegex_success() {
+        String test = "// Create new Database \n" +
+                "Integer total = input + output;";
+        assertTrue(CandidateHelper.isMatchRegex(test, VariableHelper.OPERATORS_CHARACTERS_REGEX));
+    }
+
+    @Test
+    public void isMatchRegex_success_notFound() {
+        String test = "String name = \"My new Name\"";
+        assertTrue(CandidateHelper.isMatchRegex(test, VariableHelper.OPERATORS_CHARACTERS_REGEX));
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void isMatchRegex_failed_stringIsNull() {
+        CandidateHelper.isMatchRegex(null, VariableHelper.OPERATORS_CHARACTERS_REGEX);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void isMatchRegex_failed_regexIsNull() {
+        String test = "String name = \"My new Name\"";
+        CandidateHelper.isMatchRegex(test, null);
     }
 
     private BlockModel createParentBlockStatement() {
