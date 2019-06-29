@@ -2,6 +2,7 @@ package com.finalproject.automated.refactoring.tool.extract.method.refactoring.s
 
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.AddCallExtractedMethodVA;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.Candidate;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.model.CheckExceptionVA;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateScoreAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
@@ -151,7 +152,7 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private void removeCandidates(List<Integer> indexToRemoves,
                                   List<Candidate> candidates) {
-        Integer firstIndex = indexToRemoves.size() - SECOND_INDEX;
+        int firstIndex = indexToRemoves.size() - SECOND_INDEX;
 
         for (int index = firstIndex; index >= FIRST_INDEX; index--) {
             Integer indexToRemove = indexToRemoves.get(index);
@@ -279,14 +280,18 @@ public class ExtractMethodImpl implements ExtractMethod {
     private List<String> searchException(List<StatementModel> methodStatements,
                                          MethodModel methodModel, StatementModel statementModel) {
         List<String> exceptions = new ArrayList<>(methodModel.getExceptions());
-        Integer statementIndex = CandidateHelper.searchIndexOfStatements(methodStatements, statementModel);
+        Integer catchStatementArrayIndex = getCatchStatementArrayIndex(
+                methodStatements, methodModel, statementModel);
 
-        for (int index = statementIndex; index >= FIRST_INDEX; index--) {
-            StatementModel methodStatementModel = methodStatements.get(index);
+        if (!catchStatementArrayIndex.equals(INVALID_INDEX)) {
+            CheckExceptionVA checkExceptionVA = CheckExceptionVA.builder()
+                    .catchStatementArrayIndex(catchStatementArrayIndex)
+                    .methodModel(methodModel)
+                    .methodStatements(methodStatements)
+                    .exceptions(exceptions)
+                    .build();
 
-            if (checkContainCatchBlock(methodModel, methodStatementModel, exceptions)) {
-                break;
-            }
+            checkException(checkExceptionVA);
         }
 
         return exceptions.stream()
@@ -294,31 +299,76 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .collect(Collectors.toList());
     }
 
-    private Boolean checkContainCatchBlock(MethodModel methodModel, StatementModel statementModel,
-                                           List<String> exceptions) {
-        if (statementModel instanceof BlockModel) {
-            StatementModel endBlockStatement = CandidateHelper.searchStatementByIndex(methodModel.getStatements(),
-                    ((BlockModel) statementModel).getEndOfBlockStatement().getIndex());
-            Boolean isCatch = endBlockStatement.getStatement().startsWith(CATCH);
+    private Integer getCatchStatementArrayIndex(List<StatementModel> methodStatements,
+                                                MethodModel methodModel, StatementModel statementModel) {
+        Integer statementIndex = CandidateHelper.searchIndexOfStatements(methodStatements, statementModel);
+        Integer catchStatementArrayIndex = INVALID_INDEX;
 
-            if (isCatch) {
-                saveException(methodModel, endBlockStatement, exceptions);
+        for (int index = statementIndex; index >= FIRST_INDEX; index--) {
+            StatementModel methodStatementModel = methodStatements.get(index);
+
+            if (checkContainCatchBlock(methodModel, methodStatementModel)) {
+                catchStatementArrayIndex = getEndStatementArrayIndex((BlockModel) methodStatementModel,
+                        methodModel.getStatements(), methodStatements);
+                break;
             }
+        }
 
-            return isCatch;
+        return catchStatementArrayIndex;
+    }
+
+    private Boolean checkContainCatchBlock(MethodModel methodModel, StatementModel statementModel) {
+        if (statementModel instanceof BlockModel) {
+            StatementModel endBlockStatement = CandidateHelper.searchStatementByIndex(
+                    methodModel.getStatements(),
+                    ((BlockModel) statementModel).getEndOfBlockStatement().getIndex());
+
+            return isCatchBlock(endBlockStatement);
         } else {
             return Boolean.FALSE;
         }
     }
 
-    private void saveException(MethodModel methodModel, StatementModel endBlockStatement,
-                               List<String> exceptions) {
-        methodModel.getLocalVariables()
+    private Boolean isCatchBlock(StatementModel statementModel) {
+        return statementModel.getStatement() != null &&
+                statementModel.getStatement().startsWith(CATCH);
+    }
+
+    private Integer getEndStatementArrayIndex(BlockModel blockModel, List<StatementModel> statements,
+                                              List<StatementModel> methodStatements) {
+        StatementModel foundStatement = CandidateHelper.searchStatementByIndex(
+                statements, blockModel.getEndOfBlockStatement().getIndex());
+
+        if (foundStatement != null) {
+            return CandidateHelper.searchIndexOfStatements(methodStatements, foundStatement);
+        } else {
+            return INVALID_INDEX;
+        }
+    }
+
+    private void checkException(CheckExceptionVA checkExceptionVA) {
+        StatementModel catchBlockStatement = checkExceptionVA.getMethodStatements()
+                .get(checkExceptionVA.getCatchStatementArrayIndex());
+
+        saveException(catchBlockStatement, checkExceptionVA);
+    }
+
+    private void saveException(StatementModel catchBlockStatement, CheckExceptionVA checkExceptionVA) {
+        checkExceptionVA.getMethodModel()
+                .getLocalVariables()
                 .stream()
                 .filter(variablePropertyModel ->
-                        variablePropertyModel.getStatementIndex().equals(endBlockStatement.getIndex()))
+                        variablePropertyModel.getStatementIndex()
+                                .equals(catchBlockStatement.getIndex()))
                 .forEach(variablePropertyModel ->
-                        exceptions.add(variablePropertyModel.getType()));
+                        checkExceptionVA.getExceptions().add(variablePropertyModel.getType()));
+
+        if (checkContainCatchBlock(checkExceptionVA.getMethodModel(), catchBlockStatement)) {
+            Integer endStatementArrayIndex = getEndStatementArrayIndex((BlockModel) catchBlockStatement,
+                    checkExceptionVA.getMethodModel().getStatements(), checkExceptionVA.getMethodStatements());
+            checkExceptionVA.setCatchStatementArrayIndex(endStatementArrayIndex);
+            checkException(checkExceptionVA);
+        }
     }
 
     private MethodModel createRemainingMethodModel(MethodModel methodModel,
@@ -367,6 +417,10 @@ public class ExtractMethodImpl implements ExtractMethod {
 
         for (int index = FIRST_INDEX; index < statements.size(); index++) {
             checkStatementModel(index, statements, addCallExtractedMethodVA);
+
+            if (!addCallExtractedMethodVA.getStatementArrayIndex().equals(INVALID_INDEX)) {
+                break;
+            }
         }
     }
 
@@ -380,30 +434,27 @@ public class ExtractMethodImpl implements ExtractMethod {
             addCallExtractedMethodVA.setStatementArrayIndex(index);
         }
 
-        if (statementModel instanceof BlockModel) {
+        if (isSearchBlock(statementModel, addCallExtractedMethodVA)) {
             addCallExtractedMethodVA.setStatements(((BlockModel) statementModel).getStatements());
             doAddCallExtractedMethodStatement(addCallExtractedMethodVA);
         }
     }
 
+    private Boolean isSearchBlock(StatementModel statementModel,
+                                  AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        return statementModel instanceof BlockModel &&
+                addCallExtractedMethodVA.getStatementArrayIndex().equals(INVALID_INDEX);
+    }
+
     private void writeCallExtractedMethodStatement(AddCallExtractedMethodVA addCallExtractedMethodVA) {
-        Integer callExtractedMethodIndex = addCallExtractedMethodVA.getStatementArrayIndex() + SECOND_INDEX;
-        StatementModel statementModel = null;
+        AtomicInteger callExtractedMethodIndex = new AtomicInteger(
+                addCallExtractedMethodVA.getStatementArrayIndex() + SECOND_INDEX);
         StatementModel callExtractedMethodStatementModel = createCallExtractedMethodStatement(
                 addCallExtractedMethodVA);
 
-        if (!callExtractedMethodIndex.equals(FIRST_INDEX)) {
-            statementModel = addCallExtractedMethodVA.getExtractedStatements()
-                    .get(addCallExtractedMethodVA.getStatementArrayIndex());
-        }
-
-        if (statementModel instanceof BlockModel) {
-            ((BlockModel) statementModel).getStatements()
-                    .add(callExtractedMethodStatementModel);
-        } else {
-            addCallExtractedMethodVA.getExtractedStatements()
-                    .add(callExtractedMethodIndex, callExtractedMethodStatementModel);
-        }
+        searchParentBlockStatement(callExtractedMethodIndex, addCallExtractedMethodVA);
+        appendCallExtractedMethodStatement(callExtractedMethodIndex.get(),
+                callExtractedMethodStatementModel, addCallExtractedMethodVA);
     }
 
     private StatementModel createCallExtractedMethodStatement(AddCallExtractedMethodVA addCallExtractedMethodVA) {
@@ -432,6 +483,44 @@ public class ExtractMethodImpl implements ExtractMethod {
         parameter.append(METHOD_PARAMETER_SUFFIX);
 
         return parameter.toString();
+    }
+
+    private void searchParentBlockStatement(AtomicInteger callExtractedMethodIndex,
+                                            AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        if (!FIRST_INDEX.equals(callExtractedMethodIndex.get())) {
+            StatementModel statementModel = addCallExtractedMethodVA.getExtractedStatements()
+                    .get(addCallExtractedMethodVA.getStatementArrayIndex());
+
+            checkIfParentBlockStatement(callExtractedMethodIndex, statementModel, addCallExtractedMethodVA);
+        }
+    }
+
+    private void checkIfParentBlockStatement(AtomicInteger callExtractedMethodIndex,
+                                             StatementModel statementModel,
+                                             AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        if (statementModel instanceof BlockModel) {
+            checkIfFirstStatement(callExtractedMethodIndex, addCallExtractedMethodVA);
+            addCallExtractedMethodVA.setExtractedStatements(((BlockModel) statementModel).getStatements());
+        }
+    }
+
+    private void checkIfFirstStatement(AtomicInteger callExtractedMethodIndex,
+                                       AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        if (addCallExtractedMethodVA.getExtractedStatementIndex().equals(FIRST_INDEX)) {
+            callExtractedMethodIndex.set(FIRST_INDEX);
+        }
+    }
+
+    private void appendCallExtractedMethodStatement(Integer callExtractedMethodIndex,
+                                                    StatementModel callExtractedMethodStatementModel,
+                                                    AddCallExtractedMethodVA addCallExtractedMethodVA) {
+        List<StatementModel> statements = addCallExtractedMethodVA.getExtractedStatements();
+
+        if (callExtractedMethodIndex > statements.size()) {
+            callExtractedMethodIndex = FIRST_INDEX;
+        }
+
+        statements.add(callExtractedMethodIndex, callExtractedMethodStatementModel);
     }
 
     private Boolean replaceFile(String path, MethodModel methodModel, Candidate bestCandidate) {
@@ -463,7 +552,7 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private String normalizeMethodString(String method) {
         List<String> statements = new ArrayList<>(Arrays.asList(method.split(NEW_LINE)));
-        Integer lastIndex = statements.size() - SECOND_INDEX;
+        int lastIndex = statements.size() - SECOND_INDEX;
 
         statements.set(SECOND_INDEX, TAB + statements.get(SECOND_INDEX));
         statements.set(lastIndex, TAB + statements.get(lastIndex));
