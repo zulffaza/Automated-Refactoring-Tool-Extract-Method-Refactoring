@@ -56,6 +56,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private static final String DO_REGEX = "^(?:do)+(?:\\s)*(?:\\{)+(?:\\s)*";
     private static final String WHILE_REGEX = "^(?:while)+(?:\\s)*(?:\\()+(?:\\s)*";
     private static final String RETURN_REGEX = "^(?:return)+(?:\\s)*";
+    private static final String SWITCH_REGEX = "^(?:switch)+(?:\\s)*(?:\\()+(?:\\s)*";
 
     private static final Integer SINGLE_LIST_SIZE = 1;
     private static final Integer FIRST_INDEX = 0;
@@ -421,6 +422,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                 .build();
 
         isBlockComplete(isBlockCompleteVA);
+        isParentNotSwitchStatement(isBlockCompleteVA);
 
         return isBlockCompleteVA.getIsBlockComplete().get();
     }
@@ -568,6 +570,41 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                                                   IsBlockCompleteVA isBlockCompleteVA) {
         return CandidateHelper.isMatchRegex(statementModel.getStatement(), WHILE_REGEX) &&
                 isBlockCompleteVA.getBeforeStatementModel() == null;
+    }
+
+    private void isParentNotSwitchStatement(IsBlockCompleteVA isBlockCompleteVA) {
+        Integer firstCandidateIndex = isBlockCompleteVA.getStatements()
+                .get(FIRST_INDEX)
+                .getIndex();
+        StatementModel statementModel = CandidateHelper.searchStatementByIndex(
+                isBlockCompleteVA.getMethodBlock().getStatements(), firstCandidateIndex);
+        List<StatementModel> methodStatements = CandidateHelper.mergeAllStatements(
+                isBlockCompleteVA.getMethodBlock().getStatements());
+
+        searchParentSwitchStatement(statementModel, methodStatements, isBlockCompleteVA);
+    }
+
+    private void searchParentSwitchStatement(StatementModel statementModel,
+                                             List<StatementModel> methodStatements,
+                                             IsBlockCompleteVA isBlockCompleteVA) {
+        Integer firstCandidateArrayIndex = CandidateHelper.searchIndexOfStatements(
+                methodStatements, statementModel);
+
+        for (int index = firstCandidateArrayIndex; index >= FIRST_INDEX; index--) {
+            StatementModel parentStatementModel = methodStatements.get(index);
+
+            if (isParentSwitchBlock(parentStatementModel, statementModel)) {
+                flagCandidateToFalse(isBlockCompleteVA);
+                break;
+            }
+        }
+    }
+
+    private Boolean isParentSwitchBlock(StatementModel parentStatementModel, StatementModel statementModel) {
+        return parentStatementModel instanceof BlockModel &&
+                CandidateHelper.isMatchRegex(parentStatementModel.getStatement(), CATCH_REGEX) &&
+                ((BlockModel) parentStatementModel).getEndOfBlockStatement().getIndex() >
+                        statementModel.getIndex();
     }
 
     private Boolean isQualityValid(MethodModel methodModel, Candidate candidate) {
