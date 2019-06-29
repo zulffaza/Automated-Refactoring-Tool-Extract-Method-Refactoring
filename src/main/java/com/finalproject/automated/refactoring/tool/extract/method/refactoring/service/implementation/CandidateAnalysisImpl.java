@@ -562,13 +562,14 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private Boolean isAbnormalBlock(StatementModel statementModel,
                                     IsBlockCompleteVA isBlockCompleteVA) {
-        return isDoWhileNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
+        return isEndStatementNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
                 CandidateHelper.isMatchRegex(statementModel.getStatement(), RETURN_REGEX);
     }
 
-    private Boolean isDoWhileNeedOpeningStatement(StatementModel statementModel,
-                                                  IsBlockCompleteVA isBlockCompleteVA) {
-        return CandidateHelper.isMatchRegex(statementModel.getStatement(), WHILE_REGEX) &&
+    private Boolean isEndStatementNeedOpeningStatement(StatementModel statementModel,
+                                                       IsBlockCompleteVA isBlockCompleteVA) {
+        return (CandidateHelper.isMatchRegex(statementModel.getStatement(), WHILE_REGEX) ||
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), ELSE_REGEX)) &&
                 isBlockCompleteVA.getBeforeStatementModel() == null;
     }
 
