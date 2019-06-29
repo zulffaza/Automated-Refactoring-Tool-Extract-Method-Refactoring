@@ -287,6 +287,7 @@ public class ExtractMethodImpl implements ExtractMethod {
             CheckExceptionVA checkExceptionVA = CheckExceptionVA.builder()
                     .catchStatementArrayIndex(catchStatementArrayIndex)
                     .methodModel(methodModel)
+                    .statementModel(statementModel)
                     .methodStatements(methodStatements)
                     .exceptions(exceptions)
                     .build();
@@ -301,13 +302,14 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private Integer getCatchStatementArrayIndex(List<StatementModel> methodStatements,
                                                 MethodModel methodModel, StatementModel statementModel) {
-        Integer statementIndex = CandidateHelper.searchIndexOfStatements(methodStatements, statementModel);
+        int statementIndex = CandidateHelper.searchIndexOfStatements(methodStatements, statementModel) -
+                SECOND_INDEX;
         Integer catchStatementArrayIndex = INVALID_INDEX;
 
         for (int index = statementIndex; index >= FIRST_INDEX; index--) {
             StatementModel methodStatementModel = methodStatements.get(index);
 
-            if (checkContainCatchBlock(methodModel, methodStatementModel)) {
+            if (checkContainCatchBlock(methodModel, statementModel, methodStatementModel)) {
                 catchStatementArrayIndex = getEndStatementArrayIndex((BlockModel) methodStatementModel,
                         methodModel.getStatements(), methodStatements);
                 break;
@@ -317,16 +319,22 @@ public class ExtractMethodImpl implements ExtractMethod {
         return catchStatementArrayIndex;
     }
 
-    private Boolean checkContainCatchBlock(MethodModel methodModel, StatementModel statementModel) {
-        if (statementModel instanceof BlockModel) {
+    private Boolean checkContainCatchBlock(MethodModel methodModel, StatementModel statementModel,
+                                           StatementModel methodStatementModel) {
+        if (methodStatementModel instanceof BlockModel) {
+            Integer endIndex = ((BlockModel) methodStatementModel).getEndOfBlockStatement().getIndex();
             StatementModel endBlockStatement = CandidateHelper.searchStatementByIndex(
-                    methodModel.getStatements(),
-                    ((BlockModel) statementModel).getEndOfBlockStatement().getIndex());
+                    methodModel.getStatements(), endIndex);
 
-            return isCatchBlock(endBlockStatement);
+            return isContainValidCatchBlock(endIndex, statementModel, endBlockStatement);
         } else {
             return Boolean.FALSE;
         }
+    }
+
+    private Boolean isContainValidCatchBlock(Integer endIndex, StatementModel statementModel,
+                                             StatementModel endBlockStatement) {
+        return endIndex > statementModel.getIndex() && isCatchBlock(endBlockStatement);
     }
 
     private Boolean isCatchBlock(StatementModel statementModel) {
@@ -363,7 +371,8 @@ public class ExtractMethodImpl implements ExtractMethod {
                 .forEach(variablePropertyModel ->
                         checkExceptionVA.getExceptions().add(variablePropertyModel.getType()));
 
-        if (checkContainCatchBlock(checkExceptionVA.getMethodModel(), catchBlockStatement)) {
+        if (checkContainCatchBlock(checkExceptionVA.getMethodModel(),
+                checkExceptionVA.getStatementModel(), catchBlockStatement)) {
             Integer endStatementArrayIndex = getEndStatementArrayIndex((BlockModel) catchBlockStatement,
                     checkExceptionVA.getMethodModel().getStatements(), checkExceptionVA.getMethodStatements());
             checkExceptionVA.setCatchStatementArrayIndex(endStatementArrayIndex);

@@ -21,6 +21,8 @@ public class CheckExceptionVA {
 
     private MethodModel methodModel;
 
+    private StatementModel statementModel;
+
     private List<StatementModel> methodStatements;
 
     private List<String> exceptions;
