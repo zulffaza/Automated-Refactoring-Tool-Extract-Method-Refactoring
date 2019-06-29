@@ -7,6 +7,8 @@ import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author Faza Zulfika P P
@@ -186,5 +188,12 @@ public class CandidateHelper {
                 statementModel.getStatement().equals(nextStatementModel.getStatement()) &&
                 statementModel.getStartIndex().equals(nextStatementModel.getStartIndex()) &&
                 statementModel.getEndIndex().equals(nextStatementModel.getEndIndex());
+    }
+
+    public static Boolean isMatchRegex(String statement, String regex) {
+        Pattern pattern = Pattern.compile(regex, Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(statement);
+
+        return matcher.find();
     }
 }

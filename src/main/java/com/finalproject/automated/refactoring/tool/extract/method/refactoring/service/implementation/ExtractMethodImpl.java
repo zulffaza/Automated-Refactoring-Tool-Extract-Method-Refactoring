@@ -48,7 +48,7 @@ public class ExtractMethodImpl implements ExtractMethod {
     private ReplaceFileHelper replaceFileHelper;
 
     private static final String AT = "@";
-    private static final String CATCH = "catch";
+    private static final String CATCH_REGEX = "^(?:catch)+(?:\\s)*(?:\\()+(?:\\s)*";
     private static final String METHOD_PUBLIC_MODIFIER = "public";
     private static final String METHOD_PROTECTED_MODIFIER = "protected";
     private static final String METHOD_PRIVATE_MODIFIER = "private";
@@ -331,7 +331,7 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private Boolean isCatchBlock(StatementModel statementModel) {
         return statementModel.getStatement() != null &&
-                statementModel.getStatement().startsWith(CATCH);
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), CATCH_REGEX);
     }
 
     private Integer getEndStatementArrayIndex(BlockModel blockModel, List<StatementModel> statements,
