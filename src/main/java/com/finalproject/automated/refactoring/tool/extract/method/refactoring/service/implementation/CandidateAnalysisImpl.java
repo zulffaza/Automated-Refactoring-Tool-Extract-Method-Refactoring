@@ -603,7 +603,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private Boolean isParentSwitchBlock(StatementModel parentStatementModel, StatementModel statementModel) {
         return parentStatementModel instanceof BlockModel &&
-                CandidateHelper.isMatchRegex(parentStatementModel.getStatement(), CATCH_REGEX) &&
+                CandidateHelper.isMatchRegex(parentStatementModel.getStatement(), SWITCH_REGEX) &&
                 ((BlockModel) parentStatementModel).getEndOfBlockStatement().getIndex() >
                         statementModel.getIndex();
     }
