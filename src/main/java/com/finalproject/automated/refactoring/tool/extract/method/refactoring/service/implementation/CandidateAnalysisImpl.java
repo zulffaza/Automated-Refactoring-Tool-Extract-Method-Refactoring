@@ -501,13 +501,16 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                                       IsBlockCompleteVA isBlockCompleteVA) {
         IsIfMissElseVA isIfMissElseVA = IsIfMissElseVA.builder()
                 .statements(isBlockCompleteVA.getMethodBlock().getStatements())
-                .ifStatementModel(statementModel)
+                .statementModel(statementModel)
+                .beforeStatementModel(isBlockCompleteVA.getBeforeStatementModel())
                 .nextIfStatementModel(isBlockCompleteVA.getNextStatementModel())
                 .isIfMissElseBlock(new AtomicBoolean(Boolean.FALSE))
                 .build();
 
         if (CandidateHelper.isMatchRegex(statementModel.getStatement(), IF_REGEX)) {
             searchIfStatementLocation(isIfMissElseVA);
+        } else if (CandidateHelper.isMatchRegex(statementModel.getStatement(), ELSE_REGEX)) {
+            searchElseStatementLocation(isIfMissElseVA);
         }
 
         return isIfMissElseVA.getIsIfMissElseBlock().get();
@@ -516,7 +519,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private void searchIfStatementLocation(IsIfMissElseVA isIfMissElseVA) {
         List<StatementModel> statements = isIfMissElseVA.getStatements();
 
-        if (statements.contains(isIfMissElseVA.getIfStatementModel())) {
+        if (statements.contains(isIfMissElseVA.getStatementModel())) {
             checkIfStatementElse(statements, isIfMissElseVA);
         } else {
             statements.forEach(statementModel ->
@@ -526,7 +529,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private void checkIfStatementElse(List<StatementModel> statements,
                                       IsIfMissElseVA isIfMissElseVA) {
-        Integer indexOfIfStatement = statements.indexOf(isIfMissElseVA.getIfStatementModel());
+        Integer indexOfIfStatement = statements.indexOf(isIfMissElseVA.getStatementModel());
         StatementModel nextStatementModel = getStatementModel(statements, indexOfIfStatement + SECOND_INDEX);
 
         if (isIfNeedChecked(nextStatementModel, isIfMissElseVA)) {
@@ -537,7 +540,6 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private Boolean isIfNeedChecked(StatementModel nextStatementModel, IsIfMissElseVA isIfMissElseVA) {
         return isIfMissElseVA.getNextIfStatementModel() == null &&
-                !isIfMissElseVA.getIsIfMissElseBlock().get() &&
                 nextStatementModel != null &&
                 CandidateHelper.isMatchRegex(nextStatementModel.getStatement(), ELSE_REGEX);
     }
@@ -556,6 +558,56 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                 !isIfMissElseVA.getIsIfMissElseBlock().get();
     }
 
+    private void searchElseStatementLocation(IsIfMissElseVA isIfMissElseVA) {
+        List<StatementModel> statements = isIfMissElseVA.getStatements();
+
+        if (statements.contains(isIfMissElseVA.getStatementModel())) {
+            checkElseStatementElse(statements, isIfMissElseVA);
+        } else {
+            statements.forEach(statementModel ->
+                    checkElseStatementLocation(statementModel, isIfMissElseVA));
+        }
+    }
+
+    private void checkElseStatementElse(List<StatementModel> statements,
+                                        IsIfMissElseVA isIfMissElseVA) {
+        Integer indexOfIfStatement = statements.indexOf(isIfMissElseVA.getStatementModel());
+        StatementModel beforeStatementModel = getStatementModel(statements, indexOfIfStatement - SECOND_INDEX);
+        StatementModel nextStatementModel = getStatementModel(statements, indexOfIfStatement + SECOND_INDEX);
+
+        if (isElseNeedChecked(beforeStatementModel, nextStatementModel, isIfMissElseVA)) {
+            isIfMissElseVA.getIsIfMissElseBlock()
+                    .set(Boolean.TRUE);
+        }
+    }
+
+    private Boolean isElseNeedChecked(StatementModel beforeStatementModel, StatementModel nextStatementModel,
+                                      IsIfMissElseVA isIfMissElseVA) {
+        return isElseHasOpening(beforeStatementModel, isIfMissElseVA) ||
+                isElseHasClosing(nextStatementModel, isIfMissElseVA);
+    }
+
+    private Boolean isElseHasOpening(StatementModel beforeStatementModel, IsIfMissElseVA isIfMissElseVA) {
+        return isIfMissElseVA.getBeforeStatementModel() == null &&
+                beforeStatementModel != null &&
+                (CandidateHelper.isMatchRegex(beforeStatementModel.getStatement(), ELSE_REGEX) ||
+                        CandidateHelper.isMatchRegex(beforeStatementModel.getStatement(), IF_REGEX));
+    }
+
+    private Boolean isElseHasClosing(StatementModel nextStatementModel, IsIfMissElseVA isIfMissElseVA) {
+        return isIfMissElseVA.getNextIfStatementModel() == null &&
+                nextStatementModel != null &&
+                CandidateHelper.isMatchRegex(nextStatementModel.getStatement(), ELSE_REGEX);
+    }
+
+    private void checkElseStatementLocation(StatementModel statementModel,
+                                            IsIfMissElseVA isIfMissElseVA) {
+        if (isNeedToCheckInsideBlock(statementModel, isIfMissElseVA)) {
+            isIfMissElseVA.setStatements(((BlockModel) statementModel).getStatements());
+            searchElseStatementLocation(isIfMissElseVA);
+        }
+    }
+
     private void flagCandidateToFalse(IsBlockCompleteVA isBlockCompleteVA) {
         isBlockCompleteVA.getIsBlockComplete()
                 .set(Boolean.FALSE);
@@ -564,6 +616,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private Boolean isAbnormalBlock(StatementModel statementModel,
                                     IsBlockCompleteVA isBlockCompleteVA) {
         return isEndStatementNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
+                isIfMissElseBlock(statementModel, isBlockCompleteVA) ||
                 CandidateHelper.isMatchRegex(statementModel.getStatement(), RETURN_REGEX);
     }
 
