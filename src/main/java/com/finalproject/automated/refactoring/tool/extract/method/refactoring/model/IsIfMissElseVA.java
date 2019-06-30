@@ -19,7 +19,9 @@ public class IsIfMissElseVA {
 
     private List<StatementModel> statements;
 
-    private StatementModel ifStatementModel;
+    private StatementModel statementModel;
+
+    private StatementModel beforeStatementModel;
 
     private StatementModel nextIfStatementModel;
 
