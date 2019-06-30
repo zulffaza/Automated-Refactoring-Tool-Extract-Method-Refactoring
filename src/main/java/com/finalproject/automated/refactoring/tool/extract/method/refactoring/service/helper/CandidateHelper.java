@@ -18,6 +18,10 @@ import java.util.regex.Pattern;
 
 public class CandidateHelper {
 
+    private static final String ONE_LINE_COMMENT_REGEX = "^(?://)+(?:[ \\t\\S])*";
+    private static final String MULTI_LINE_COMMENT_REGEX = "^(?:/\\*)+(?:[\\s\\S])*(?:\\*/)+";
+    private static final String EMPTY_STRING = "";
+
     private static final Integer FIRST_INDEX = 0;
     private static final Integer INVALID_INDEX = -1;
 
@@ -191,9 +195,25 @@ public class CandidateHelper {
     }
 
     public static Boolean isMatchRegex(String statement, String regex) {
+        statement = removeComments(statement);
+
         Pattern pattern = Pattern.compile(regex, Pattern.MULTILINE);
-        Matcher matcher = pattern.matcher(statement);
+        Matcher matcher = pattern.matcher(Matcher.quoteReplacement(statement));
 
         return matcher.find();
+    }
+
+    private static String removeComments(String methodDeclarations) {
+        methodDeclarations = removeWithEmptyString(ONE_LINE_COMMENT_REGEX, methodDeclarations);
+        methodDeclarations = removeWithEmptyString(MULTI_LINE_COMMENT_REGEX, methodDeclarations);
+
+        return methodDeclarations;
+    }
+
+    private static String removeWithEmptyString(String regex, String input) {
+        return Pattern.compile(regex)
+                .matcher(Matcher.quoteReplacement(input))
+                .replaceAll(EMPTY_STRING)
+                .trim();
     }
 }
