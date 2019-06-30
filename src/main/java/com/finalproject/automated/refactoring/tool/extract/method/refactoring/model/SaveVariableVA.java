@@ -21,6 +21,9 @@ public class SaveVariableVA {
     @Builder.Default
     private AtomicBoolean isClass = new AtomicBoolean();
 
+    @Builder.Default
+    private AtomicBoolean isFinal = new AtomicBoolean();
+
     private StatementModel statementModel;
 
     private Candidate candidate;

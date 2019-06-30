@@ -29,6 +29,7 @@ public class CandidateVariableAnalysisImpl implements CandidateVariableAnalysis 
     private VariableHelper variableHelper;
 
     private static final String GLOBAL_VARIABLE_PREFIX = "this.";
+    private static final String FINAL_KEYWORD = "final";
     private static final String EMPTY_STRING = "";
 
     private static final Integer FIRST_INDEX = 0;
@@ -72,6 +73,8 @@ public class CandidateVariableAnalysisImpl implements CandidateVariableAnalysis 
     private void saveVariable(String variable, SaveVariableVA saveVariableVA) {
         if (isPropertyType(variable)) {
             savePropertyType(variable, saveVariableVA);
+        } else if (checkFinalKeyword(variable)) {
+            flagFinalKeyword(saveVariableVA);
         } else if (checkGlobalVariable(variable)) {
             saveGlobalVariableWithPreProcessing(variable, saveVariableVA.getCandidate());
         } else {
@@ -89,6 +92,10 @@ public class CandidateVariableAnalysisImpl implements CandidateVariableAnalysis 
                 .statementIndex(saveVariableVA.getStatementModel().getIndex())
                 .build();
 
+        if (saveVariableVA.getIsFinal().get()) {
+            saveFinalKeywords(variablePropertyModel, saveVariableVA);
+        }
+
         variablePropertyModel.setType(variable);
 
         saveVariableVA.getCandidate()
@@ -96,6 +103,23 @@ public class CandidateVariableAnalysisImpl implements CandidateVariableAnalysis 
                 .add(variablePropertyModel);
 
         saveVariableVA.getIsClass()
+                .set(Boolean.TRUE);
+    }
+
+    private void saveFinalKeywords(VariablePropertyModel variablePropertyModel,
+                                   SaveVariableVA saveVariableVA) {
+        variablePropertyModel.getKeywords()
+                .add(FINAL_KEYWORD);
+        saveVariableVA.getIsFinal()
+                .set(Boolean.FALSE);
+    }
+
+    private Boolean checkFinalKeyword(String variable) {
+        return variable.equals(FINAL_KEYWORD);
+    }
+
+    private void flagFinalKeyword(SaveVariableVA saveVariableVA) {
+        saveVariableVA.getIsFinal()
                 .set(Boolean.TRUE);
     }
 
