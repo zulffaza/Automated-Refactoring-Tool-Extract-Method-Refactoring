@@ -537,7 +537,8 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
 
     private Boolean isIfNeedChecked(StatementModel nextStatementModel, IsIfMissElseVA isIfMissElseVA) {
         return isIfMissElseVA.getNextIfStatementModel() == null &&
-                nextStatementModel instanceof BlockModel &&
+                !isIfMissElseVA.getIsIfMissElseBlock().get() &&
+                nextStatementModel != null &&
                 CandidateHelper.isMatchRegex(nextStatementModel.getStatement(), ELSE_REGEX);
     }
 
