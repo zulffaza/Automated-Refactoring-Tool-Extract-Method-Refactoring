@@ -7,6 +7,7 @@ import com.finalproject.automated.refactoring.tool.extract.method.refactoring.se
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateScoreAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.helper.CandidateHelper;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.helper.TimeStampHelper;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.PropertyModel;
@@ -52,6 +53,7 @@ public class ExtractMethodImpl implements ExtractMethod {
     private static final String METHOD_PUBLIC_MODIFIER = "public";
     private static final String METHOD_PROTECTED_MODIFIER = "protected";
     private static final String METHOD_PRIVATE_MODIFIER = "private";
+    private static final String UNDERSCORE = "_";
     private static final String EXTRACTED_METHOD_NAME_SUFFIX = "Extracted";
     private static final String NEW_LINE = "\n";
     private static final String TAB = "\t";
@@ -167,7 +169,8 @@ public class ExtractMethodImpl implements ExtractMethod {
 
     private MethodModel createMethodModelFromCandidate(MethodModel methodModel,
                                                        Candidate candidate) {
-        String extractedMethodName = methodModel.getName() + EXTRACTED_METHOD_NAME_SUFFIX;
+        String extractedMethodName = methodModel.getName() + UNDERSCORE +
+                TimeStampHelper.createTimeStamp() + EXTRACTED_METHOD_NAME_SUFFIX;
 
         return MethodModel.builder()
                 .keywords(createKeywords(methodModel.getKeywords()))

@@ -1,6 +1,7 @@
 package com.finalproject.automated.refactoring.tool.extract.method.refactoring;
 
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.helper.TimeStampHelper;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
@@ -10,6 +11,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
+import org.powermock.api.mockito.PowerMockito;
+import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
+import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
@@ -32,8 +37,10 @@ import static org.junit.Assert.*;
  * @since 26 April 2019
  */
 
-@RunWith(SpringRunner.class)
+@RunWith(PowerMockRunner.class)
 @SpringBootTest
+@PowerMockRunnerDelegate(SpringRunner.class)
+@PrepareForTest(TimeStampHelper.class)
 public class ExtractMethodTest {
 
     @Rule
@@ -50,6 +57,8 @@ public class ExtractMethodTest {
 
     private Path path;
 
+    private Long timeStamp;
+
     @Before
     public void setUp() throws IOException {
         File file = temporaryFolder.newFile();
@@ -63,6 +72,10 @@ public class ExtractMethodTest {
                 .statements(createExpectedStatements())
                 .build();
         path = Paths.get(file.getPath());
+        timeStamp = System.currentTimeMillis();
+
+        PowerMockito.mockStatic(TimeStampHelper.class);
+        PowerMockito.when(TimeStampHelper.createTimeStamp()).thenReturn(timeStamp);
 
         Files.write(path, createFileContent().getBytes());
     }
@@ -399,12 +412,12 @@ public class ExtractMethodTest {
                 "    public Rectangle2D getFigureDrawBounds() {\n" +
                 "\t\tRectangle2D r = super.getFigDrawBounds();\n" +
                 "\t\tif (getNodeCount() > 1) {\n" +
-                "\t\t\tgetFigureDrawBoundsExtracted(r);\n" +
+                "\t\t\tgetFigureDrawBounds_" + timeStamp + "Extracted(r);\n" +
                 "\t\t}\n" +
                 "\t\treturn r;\n" +
                 "\t}\n" +
                 "\n" +
-                "\tprivate void getFigureDrawBoundsExtracted(Rectangle2D r) {\n" +
+                "\tprivate void getFigureDrawBounds_" + timeStamp + "Extracted(Rectangle2D r) {\n" +
                 "\t\tif (START.get(this) != null) {\n" +
                 "\t\t\tPoint p1 = getPoint(0, 0);\n" +
                 "\t\t\tPoint p2 = getPoint(1, 0);\n" +
