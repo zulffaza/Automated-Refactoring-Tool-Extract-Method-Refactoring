@@ -4,6 +4,7 @@ import com.finalproject.automated.refactoring.tool.extract.method.refactoring.mo
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.CandidateScoreAnalysis;
 import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.ExtractMethod;
+import com.finalproject.automated.refactoring.tool.extract.method.refactoring.service.helper.TimeStampHelper;
 import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.MethodModel;
 import com.finalproject.automated.refactoring.tool.model.PropertyModel;
@@ -16,6 +17,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.invocation.InvocationOnMock;
+import org.powermock.api.mockito.PowerMockito;
+import org.powermock.core.classloader.annotations.PrepareForTest;
+import org.powermock.modules.junit4.PowerMockRunner;
+import org.powermock.modules.junit4.PowerMockRunnerDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -37,8 +42,10 @@ import static org.mockito.Mockito.*;
  * @since 26 April 2019
  */
 
-@RunWith(SpringRunner.class)
+@RunWith(PowerMockRunner.class)
 @SpringBootTest
+@PowerMockRunnerDelegate(SpringRunner.class)
+@PrepareForTest(TimeStampHelper.class)
 public class ExtractMethodImplTest {
 
     @Autowired
@@ -67,6 +74,8 @@ public class ExtractMethodImplTest {
 
     private MethodModel methodModel;
 
+    private Long timeStamp;
+
     @Before
     public void setUp() {
         methodModel = MethodModel.builder()
@@ -78,6 +87,10 @@ public class ExtractMethodImplTest {
                 .body(createBody())
                 .statements(createExpectedStatements())
                 .build();
+        timeStamp = System.currentTimeMillis();
+
+        PowerMockito.mockStatic(TimeStampHelper.class);
+        PowerMockito.when(TimeStampHelper.createTimeStamp()).thenReturn(timeStamp);
 
         when(candidateAnalysis.analysis(eq(methodModel)))
                 .thenReturn(createExpectedCandidates());
@@ -756,7 +769,7 @@ public class ExtractMethodImplTest {
         return MethodModel.builder()
                 .keywords(Collections.singletonList("private"))
                 .returnType("void")
-                .name(METHOD_NAME + "Extracted")
+                .name(METHOD_NAME + "_" + timeStamp + "Extracted")
                 .parameters(createCandidateParameters())
                 .globalVariables(candidate.getGlobalVariables())
                 .localVariables(candidate.getLocalVariables())
@@ -775,7 +788,7 @@ public class ExtractMethodImplTest {
     }
 
     private String createCandidateMethodModelString() {
-        return "private void getFigureDrawBoundsExtracted(Rectangle2D r) {\n" +
+        return "private void getFigureDrawBounds_" + timeStamp + "Extracted(Rectangle2D r) {\n" +
                 "\tif (START.get(this) != null) {\n" +
                 "\t\t\tPoint p1 = getPoint(0, 0);\n" +
                 "\t\t\tPoint p2 = getPoint(1, 0);\n" +
@@ -799,7 +812,7 @@ public class ExtractMethodImplTest {
                 .name(METHOD_NAME)
                 .body("Rectangle2D r = super.getFigDrawBounds();\n" +
                         "\t\tif (getNodeCount() > 1) {\n" +
-                        "\t\t\tgetFigureDrawBoundsExtracted(r);\n" +
+                        "\t\t\tgetFigureDrawBounds_" + timeStamp + "Extracted(r);\n" +
                         "\t\t}\n" +
                         "\t\treturn r;")
                 .statements(Arrays.asList(
@@ -814,7 +827,7 @@ public class ExtractMethodImplTest {
         return Collections.singletonList(
                 StatementModel.statementBuilder()
                         .index(2)
-                        .statement("getFigureDrawBoundsExtracted(r);")
+                        .statement("getFigureDrawBounds_" + timeStamp + "Extracted(r);")
                         .build()
         );
     }
@@ -823,7 +836,7 @@ public class ExtractMethodImplTest {
         return "public Rectangle2D getFigureDrawBounds() {\n" +
                 "\tRectangle2D r = super.getFigDrawBounds();\n" +
                 "\t\tif (getNodeCount() > 1) {\n" +
-                "\t\t\tgetFigureDrawBoundsExtracted(r);\n" +
+                "\t\t\tgetFigureDrawBounds_" + timeStamp + "Extracted(r);\n" +
                 "\t\t}\n" +
                 "\t\treturn r;\n" +
                 "}";
@@ -846,12 +859,12 @@ public class ExtractMethodImplTest {
         return "public Rectangle2D getFigureDrawBounds() {\n" +
                 "\t\tRectangle2D r = super.getFigDrawBounds();\n" +
                 "\t\tif (getNodeCount() > 1) {\n" +
-                "\t\t\tgetFigureDrawBoundsExtracted(r);\n" +
+                "\t\t\tgetFigureDrawBounds_" + timeStamp + "Extracted(r);\n" +
                 "\t\t}\n" +
                 "\t\treturn r;\n" +
                 "\t}\n" +
                 "\n" +
-                "\tprivate void getFigureDrawBoundsExtracted(Rectangle2D r) {\n" +
+                "\tprivate void getFigureDrawBounds_" + timeStamp + "Extracted(Rectangle2D r) {\n" +
                 "\t\tif (START.get(this) != null) {\n" +
                 "\t\t\tPoint p1 = getPoint(0, 0);\n" +
                 "\t\t\tPoint p2 = getPoint(1, 0);\n" +

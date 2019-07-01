@@ -4,7 +4,6 @@ import com.finalproject.automated.refactoring.tool.model.BlockModel;
 import com.finalproject.automated.refactoring.tool.model.StatementModel;
 import com.finalproject.automated.refactoring.tool.model.VariablePropertyModel;
 import com.finalproject.automated.refactoring.tool.utils.service.VariableHelper;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -25,10 +24,6 @@ public class CandidateHelperTest {
     private static final Integer FIRST_INDEX = 0;
     private static final Integer PARENT_BLOCK_STATEMENT_COUNT = 3;
     private static final Integer SEARCH_STATEMENT_INDEX = 4;
-
-    @Before
-    public void setUp() {
-    }
 
     @Test
     public void getMethodBlockStatement_success() {
