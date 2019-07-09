@@ -56,6 +56,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
     private static final String DO_REGEX = "^(?:do)+(?:\\s)*(?:\\{)+(?:\\s)*";
     private static final String WHILE_REGEX = "^(?:while)+(?:\\s)*(?:\\()+(?:\\s)*";
     private static final String RETURN_REGEX = "^(?:return)+(?:\\s)*";
+    private static final String SUPER_REGEX = "^(?:super)+(?:\\s)*(?:\\()+(?:\\s)*";
     private static final String SWITCH_REGEX = "^(?:switch)+(?:\\s)*(?:\\()+(?:\\s)*";
 
     private static final Integer SINGLE_LIST_SIZE = 1;
@@ -617,6 +618,7 @@ public class CandidateAnalysisImpl implements CandidateAnalysis {
                                     IsBlockCompleteVA isBlockCompleteVA) {
         return isEndStatementNeedOpeningStatement(statementModel, isBlockCompleteVA) ||
                 isIfMissElseBlock(statementModel, isBlockCompleteVA) ||
+                CandidateHelper.isMatchRegex(statementModel.getStatement(), SUPER_REGEX) ||
                 CandidateHelper.isMatchRegex(statementModel.getStatement(), RETURN_REGEX);
     }
 
