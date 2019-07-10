@@ -511,15 +511,8 @@ public class ExtractMethodImpl implements ExtractMethod {
                                              StatementModel statementModel,
                                              AddCallExtractedMethodVA addCallExtractedMethodVA) {
         if (statementModel instanceof BlockModel) {
-            checkIfFirstStatement(callExtractedMethodIndex, addCallExtractedMethodVA);
-            addCallExtractedMethodVA.setExtractedStatements(((BlockModel) statementModel).getStatements());
-        }
-    }
-
-    private void checkIfFirstStatement(AtomicInteger callExtractedMethodIndex,
-                                       AddCallExtractedMethodVA addCallExtractedMethodVA) {
-        if (addCallExtractedMethodVA.getExtractedStatementIndex().equals(FIRST_INDEX)) {
             callExtractedMethodIndex.set(FIRST_INDEX);
+            addCallExtractedMethodVA.setExtractedStatements(((BlockModel) statementModel).getStatements());
         }
     }
 
