@@ -129,7 +129,7 @@ public class ExtractMethodImpl implements ExtractMethod {
         AtomicBoolean isContains = new AtomicBoolean();
         searchCandidates(candidate.getStatements(), candidateToSearch.getStatements(), isContains);
 
-        return isContains.get();
+        return isContains.get() && candidate.getTotalScore() >= candidateToSearch.getTotalScore();
     }
 
     private void searchCandidates(List<StatementModel> statements,
